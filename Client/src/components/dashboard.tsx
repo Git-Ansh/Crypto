@@ -158,6 +158,8 @@ export default function Dashboard() {
     initialDomains: {
       x: [0, 0] as [number, number],
       y: [0, 0] as [number, number],
+      centerX: 0,
+      centerY: 0,
     },
   });
 
@@ -181,6 +183,11 @@ export default function Dashboard() {
   // Add these state variables right after your existing state declarations
   const [topCurrencies, setTopCurrencies] = useState<CurrencyData[]>([]);
   const [isLoadingCurrencies, setIsLoadingCurrencies] = useState<boolean>(true);
+
+  // 1. First, add state to track the selected currency
+  const [selectedCurrency, setSelectedCurrency] = useState<string>("BTC");
+  const [selectedCurrencyName, setSelectedCurrencyName] =
+    useState<string>("Bitcoin");
 
   // ------------------ Helper Functions ------------------
   // Update the formatCurrency function to handle large numbers (market cap)
@@ -223,100 +230,159 @@ export default function Dashboard() {
     });
   }
 
-  // ------------------ REST: Fetch Historical Data (24h Hourly) ------------------
-  const fetchHistoricalData = useCallback(async (): Promise<KlineData[]> => {
-    try {
-      const params = {
-        market: "cadli",
-        instrument: "BTC-USD",
-        limit: 24, // Make sure we get exactly 24 hours
-        aggregate: 1,
-        fill: "true",
-        apply_mapping: "true",
-        response_format: "JSON",
-      };
-      const resp = await axios.get<HistoricalResponse>(HISTORICAL_ENDPOINT, {
-        params,
+  // 2. Create a function to handle currency selection
+  const handleCurrencySelect = useCallback(
+    (symbol: string) => {
+      // Close existing WebSocket connection
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+
+      // Reset states
+      setZoomState({
+        xDomain: undefined,
+        yDomain: undefined,
+        isZoomed: false,
       });
-      console.log("DEBUG fetchHistoricalData response:", resp.data);
+      setChartData([]);
+      setMinuteData([]);
 
-      if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
-        throw new Error(
-          "Historical API Error: " + JSON.stringify(resp.data.Err)
-        );
+      // Set new selected currency
+      setSelectedCurrency(symbol);
+
+      // Find currency name from our top currencies list
+      const currencyData = topCurrencies.find((c) => c.symbol === symbol);
+      if (currencyData) {
+        setSelectedCurrencyName(currencyData.name || symbol);
       }
 
-      // Ensure we have data array
-      const dataArray = resp.data.Data;
-      if (!Array.isArray(dataArray) || dataArray.length === 0) {
+      // Load data for this currency
+      initializeDashboardForCurrency(symbol);
+    },
+    [topCurrencies]
+  );
+
+  // ------------------ REST: Fetch Historical Data (24h Hourly) ------------------
+  // 3. Modify API functions to accept currency parameter
+  const fetchHistoricalDataForCurrency = useCallback(
+    async (symbol: string): Promise<KlineData[]> => {
+      try {
+        const params = {
+          market: "cadli",
+          instrument: `${symbol}-USD`,
+          limit: 24,
+          aggregate: 1,
+          fill: "true",
+          apply_mapping: "true",
+          response_format: "JSON",
+        };
+        const resp = await axios.get<HistoricalResponse>(HISTORICAL_ENDPOINT, {
+          params,
+        });
+        console.log(
+          `DEBUG fetchHistoricalData for ${symbol} response:`,
+          resp.data
+        );
+
+        if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
+          throw new Error(
+            "Historical API Error: " + JSON.stringify(resp.data.Err)
+          );
+        }
+
+        // Ensure we have data array
+        const dataArray = resp.data.Data;
+        if (!Array.isArray(dataArray) || dataArray.length === 0) {
+          throw new Error(
+            `No historical data found for ${symbol} or unexpected response structure`
+          );
+        }
+
+        // Map each historical point
+        const sortedData = dataArray
+          .map((item: any) => ({
+            timestamp: item.TIMESTAMP,
+            time: formatTime(item.TIMESTAMP * 1000),
+            close: item.CLOSE,
+            open: item.OPEN,
+            high: item.HIGH,
+            low: item.LOW,
+            volume: item.VOLUME,
+          }))
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        console.log(
+          `Processed ${sortedData.length} historical data points for ${symbol}`
+        );
+        return sortedData;
+      } catch (err: any) {
+        console.error(
+          `Error fetching historical data for ${symbol}:`,
+          err?.message
+        );
         throw new Error(
-          "No historical data found or unexpected response structure"
+          `Error fetching historical data for ${symbol} from Coindesk`
         );
       }
-
-      // Map each historical point using the structure from your example
-      const sortedData = dataArray
-        .map((item: any) => ({
-          timestamp: item.TIMESTAMP, // Use TIMESTAMP from your example
-          time: formatTime(item.TIMESTAMP * 1000),
-          close: item.CLOSE, // Use CLOSE from your example
-          open: item.OPEN,
-          high: item.HIGH,
-          low: item.LOW,
-          volume: item.VOLUME,
-        }))
-        .sort((a, b) => a.timestamp - b.timestamp);
-
-      console.log(`Processed ${sortedData.length} historical data points`);
-      return sortedData;
-    } catch (err: any) {
-      console.error("Error fetching historical data:", err?.message);
-      throw new Error("Error fetching historical data from Coindesk");
-    }
-  }, []);
+    },
+    []
+  );
 
   // ------------------ REST: Fetch Current Ticker Data ------------------
-  const fetchTickerData = useCallback(async (): Promise<CryptoInfo> => {
-    try {
-      const resp = await axios.get(CURRENT_PRICE_ENDPOINT);
-      console.log("DEBUG fetchTickerData response:", resp.data);
+  // 4. Modify ticker data fetch for selected currency
+  const fetchTickerDataForCurrency = useCallback(
+    async (symbol: string): Promise<CryptoInfo> => {
+      try {
+        const endpoint = `https://data-api.coindesk.com/index/cc/v1/latest/tick?market=cadli&instruments=${symbol}-USD&apply_mapping=true`;
+        const resp = await axios.get(endpoint);
+        console.log(`DEBUG fetchTickerData for ${symbol} response:`, resp.data);
 
-      if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
-        throw new Error("API Error: " + JSON.stringify(resp.data.Err));
+        if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
+          throw new Error("API Error: " + JSON.stringify(resp.data.Err));
+        }
+
+        const tickerItem = resp.data.Data[`${symbol}-USD`];
+        if (!tickerItem || tickerItem.VALUE === undefined) {
+          throw new Error(`No ${symbol}-USD tick data found`);
+        }
+
+        return { price: tickerItem.VALUE };
+      } catch (err: any) {
+        console.error(
+          `DEBUG fetchTickerData error for ${symbol}:`,
+          err.response?.data || err.message
+        );
+        throw new Error(
+          `Error fetching current price for ${symbol} from Coindesk`
+        );
       }
-
-      const tickerItem = resp.data.Data["BTC-USD"];
-      if (!tickerItem || tickerItem.VALUE === undefined) {
-        throw new Error("No BTC-USD tick data found");
-      }
-
-      return { price: tickerItem.VALUE };
-    } catch (err: any) {
-      console.error(
-        "DEBUG fetchTickerData error:",
-        err.response?.data || err.message
-      );
-      throw new Error("Error fetching current price from Coindesk");
-    }
-  }, []);
+    },
+    []
+  );
 
   // Add this new function to fetch minute-level data
-  const fetchMinuteData = useCallback(
-    async (startTime: number, endTime: number): Promise<KlineData[]> => {
+  // 5. Also update minute data fetch function
+  const fetchMinuteDataForCurrency = useCallback(
+    async (
+      symbol: string,
+      startTime: number,
+      endTime: number
+    ): Promise<KlineData[]> => {
       try {
         setIsLoadingMinuteData(true);
         console.log(
-          `Fetching minute data from ${new Date(
+          `Fetching ${symbol} minute data from ${new Date(
             startTime
           ).toISOString()} to ${new Date(endTime).toISOString()}`
         );
 
         const params = {
           market: "cadli",
-          instrument: "BTC-USD",
-          start_time: Math.floor(startTime / 1000), // Convert to seconds
+          instrument: `${symbol}-USD`,
+          start_time: Math.floor(startTime / 1000),
           end_time: Math.floor(endTime / 1000),
-          granularity: 60, // 60 seconds = 1 minute
+          granularity: 60,
           fill: "true",
           apply_mapping: "true",
           response_format: "JSON",
@@ -370,9 +436,14 @@ export default function Dashboard() {
         setIsLoadingMinuteData(false);
         return sortedData;
       } catch (err: any) {
-        console.error("Error fetching minute data:", err?.message);
+        console.error(
+          `Error fetching minute data for ${symbol}:`,
+          err?.message
+        );
         setIsLoadingMinuteData(false);
-        throw new Error("Error fetching minute data from Coindesk");
+        throw new Error(
+          `Error fetching minute data for ${symbol} from Coindesk`
+        );
       }
     },
     []
@@ -420,45 +491,13 @@ export default function Dashboard() {
   }, []);
 
   // ------------------ One-Time Initialization on Mount ------------------
-  const initializeDashboard = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // 1) Fetch historical data for the chart
-      const historical = await fetchHistoricalData();
-
-      // Log to verify we have all 24 points
-      console.log(`Setting initial chart with ${historical.length} points`);
-
-      // Set chart data with ALL historical points
-      setChartData(historical);
-
-      // 2) Fetch current price
-      const ticker = await fetchTickerData();
-      setCryptoData(ticker);
-
-      // 3) Fetch top currencies
-      await fetchTopCurrencies();
-
-      setLastUpdated(new Date().toLocaleTimeString());
-      setLoading(false);
-      return historical.length > 0; // Return success status
-    } catch (err: any) {
-      console.error("Error in initializeDashboard:", err);
-      setError(err?.message || "Failed to initialize data");
-      setLoading(false);
-      return false;
-    }
-  }, [fetchHistoricalData, fetchTickerData, fetchTopCurrencies]);
-
-  // ------------------ WebSocket: Connect for Live Updates ------------------
-  const processBatch = useCallback(() => {
+  // 8. Create a unified initialization function
+  const processBatch = useCallback((currencySymbol: string) => {
     if (priceBufferRef.current !== null) {
       const latestPrice = priceBufferRef.current;
       const now = Date.now();
 
-      // Always update the displayed price (every 2 seconds)
+      // Always update the displayed price
       setCryptoData((prev) =>
         prev ? { ...prev, price: latestPrice } : { price: latestPrice }
       );
@@ -467,133 +506,183 @@ export default function Dashboard() {
       const hourElapsed = now - lastChartUpdateRef.current >= HOUR_IN_MS;
 
       if (hourElapsed) {
-        // Update the last chart update timestamp
         lastChartUpdateRef.current = now;
 
-        // Append a new point to the chart but preserve historical data
         setChartData((prev) => {
           const newPoint: KlineData = {
             time: formatTime(now),
             close: latestPrice,
-            timestamp: now / 1000, // Add timestamp here
+            timestamp: now / 1000,
           };
 
-          // Find the 24 historical points (they should be the first 24 in the array)
           const historicalPoints = prev.slice(0, 24);
-          // Get the live points (everything after the first 24)
           const livePoints = prev.slice(24);
-
-          // Add the new point to the live points
           const updatedLivePoints = [...livePoints, newPoint];
 
-          // If we have too many live points, trim them but KEEP ALL historical points
           if (updatedLivePoints.length > MAX_CHART_POINTS - 24) {
-            // Only trim from the live points, not the historical
             updatedLivePoints.shift();
           }
 
-          // Return historical + updated live points
           return [...historicalPoints, ...updatedLivePoints];
         });
 
-        console.log(`Added new hourly chart point at ${formatTime(now)}`);
+        console.log(
+          `Added new hourly chart point for ${currencySymbol} at ${formatTime(
+            now
+          )}`
+        );
       }
 
-      // Always update the "last updated" indicator for price
       setLastUpdated(new Date().toLocaleTimeString());
     }
 
-    // Reset counters
     messageCountRef.current = 0;
     priceBufferRef.current = null;
+
     if (batchTimerRef.current) {
       clearTimeout(batchTimerRef.current);
       batchTimerRef.current = null;
     }
   }, []);
 
-  // Update your WebSocket connection function to use the expanded subscription
-  const connectWebSocket = useCallback(() => {
-    // Only open a new WebSocket if one isn't already open
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log("WebSocket already connected.");
-      return;
-    }
-    console.log("Connecting to CryptoCompare Data Streamer ->", WS_ENDPOINT);
-    const ws = new WebSocket(WS_ENDPOINT);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log("WebSocket connected");
-      setWsConnected(true);
-      ws.send(JSON.stringify(MULTI_SUBSCRIBE_MESSAGE));
-    };
-
-    ws.onmessage = (evt) => {
-      try {
-        const msg: WSMessage = JSON.parse(evt.data);
-
-        // Watch for VALUE updates from CryptoCompare
-        if (msg.TYPE === "1101" && msg.VALUE !== undefined && msg.INSTRUMENT) {
-          const currencyPair = msg.INSTRUMENT;
-          const price = msg.VALUE;
-
-          // If it's BTC-USD, update as before
-          if (currencyPair === "BTC-USD") {
-            // Put the latest price into a buffer to be processed in batches
-            priceBufferRef.current = price;
-            messageCountRef.current += 1;
-
-            if (messageCountRef.current >= BATCH_THRESHOLD) {
-              processBatch();
-            } else if (!batchTimerRef.current) {
-              // If we haven't scheduled a batch yet, schedule one
-              batchTimerRef.current = window.setTimeout(() => {
-                processBatch();
-              }, BATCH_WINDOW);
-            }
-          }
-
-          // For all currencies, update the top currencies list
-          const symbol = currencyPair.split("-")[0]; // Extract 'BTC' from 'BTC-USD'
-
-          setTopCurrencies((prev) =>
-            prev.map((curr) =>
-              curr.symbol === symbol
-                ? {
-                    ...curr,
-                    price: price,
-                    lastUpdated: Date.now(),
-                  }
-                : curr
-            )
-          );
-        } else {
-          // For debugging – other messages from the stream
-          console.log("Received other WS message:", msg);
-        }
-      } catch (err) {
-        console.error("Error parsing WS message:", err);
+  // 6. Create WebSocket connection for selected currency
+  const connectWebSocketForCurrency = useCallback(
+    (symbol: string) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        console.log("WebSocket already connected, closing first.");
+        wsRef.current.close();
+        wsRef.current = null;
       }
-    };
 
-    ws.onerror = (err) => {
-      console.error("WebSocket error:", err);
-      setWsConnected(false);
-    };
+      console.log(`Connecting WebSocket for ${symbol}-USD`);
+      const ws = new WebSocket(WS_ENDPOINT);
+      wsRef.current = ws;
 
-    ws.onclose = (e) => {
-      console.log("WebSocket closed:", e.code, e.reason);
-      setWsConnected(false);
-    };
-  }, [processBatch]);
+      ws.onopen = () => {
+        console.log("WebSocket connected");
+        setWsConnected(true);
+
+        // Create subscription for specific currency
+        const CURRENCY_SUBSCRIBE_MESSAGE = {
+          action: "SUBSCRIBE",
+          type: "index_cc_v1_latest_tick",
+          market: "cadli",
+          instruments: [`${symbol}-USD`],
+          groups: ["VALUE", "CURRENT_HOUR"],
+        };
+
+        // Keep the multi-subscribe for top currencies
+        ws.send(JSON.stringify(MULTI_SUBSCRIBE_MESSAGE));
+
+        // Also subscribe to the selected currency specifically
+        ws.send(JSON.stringify(CURRENCY_SUBSCRIBE_MESSAGE));
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg: WSMessage = JSON.parse(evt.data);
+
+          if (
+            msg.TYPE === "1101" &&
+            msg.VALUE !== undefined &&
+            msg.INSTRUMENT
+          ) {
+            const currencyPair = msg.INSTRUMENT;
+            const price = msg.VALUE;
+
+            // If it's our selected currency, update chart and price
+            if (currencyPair === `${symbol}-USD`) {
+              priceBufferRef.current = price;
+              messageCountRef.current += 1;
+
+              if (messageCountRef.current >= BATCH_THRESHOLD) {
+                processBatch(symbol);
+              } else if (!batchTimerRef.current) {
+                batchTimerRef.current = window.setTimeout(() => {
+                  processBatch(symbol);
+                }, BATCH_WINDOW);
+              }
+            }
+
+            // Update top currencies list regardless of which message it is
+            const msgSymbol = currencyPair.split("-")[0];
+
+            setTopCurrencies((prev) =>
+              prev.map((curr) =>
+                curr.symbol === msgSymbol
+                  ? {
+                      ...curr,
+                      price: price,
+                      lastUpdated: Date.now(),
+                    }
+                  : curr
+              )
+            );
+          }
+        } catch (err) {
+          console.error("Error parsing WS message:", err);
+        }
+      };
+
+      // Rest of WebSocket handler remains the same
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        setWsConnected(false);
+      };
+
+      ws.onclose = (e) => {
+        console.log("WebSocket closed:", e.code, e.reason);
+        setWsConnected(false);
+      };
+    },
+    [processBatch]
+  );
+
+  // THEN place initializeDashboardForCurrency after it
+  const initializeDashboardForCurrency = useCallback(
+    async (symbol: string) => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // 1) Fetch historical data for this currency
+        const historical = await fetchHistoricalDataForCurrency(symbol);
+        setChartData(historical);
+
+        // 2) Fetch current price for this currency
+        const ticker = await fetchTickerDataForCurrency(symbol);
+        setCryptoData(ticker);
+
+        setLastUpdated(new Date().toLocaleTimeString());
+        setLoading(false);
+
+        // Connect WebSocket for this currency
+        connectWebSocketForCurrency(symbol);
+
+        return true;
+      } catch (err: any) {
+        console.error(`Error initializing dashboard for ${symbol}:`, err);
+        setError(err?.message || `Failed to load data for ${symbol}`);
+        setLoading(false);
+        return false;
+      }
+    },
+    [
+      fetchHistoricalDataForCurrency,
+      fetchTickerDataForCurrency,
+      connectWebSocketForCurrency,
+    ]
+  );
+
+  // ------------------ WebSocket: Connect for Live Updates ------------------
+  // 7. Update the processBatch function to use selected currency
 
   // ------------------ Refresh Button: Only Update Current Price ------------------
   const handleRefresh = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const ticker = await fetchTickerData();
+      const ticker = await fetchTickerDataForCurrency(selectedCurrency);
       setCryptoData(ticker);
       setLastUpdated(new Date().toLocaleTimeString());
       setLoading(false);
@@ -602,7 +691,7 @@ export default function Dashboard() {
       setError(err?.message || "Failed to refresh price");
       setLoading(false);
     }
-  }, [fetchTickerData]);
+  }, [fetchTickerDataForCurrency, selectedCurrency]);
 
   // ------------------ Zoom Handlers ------------------
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -741,7 +830,11 @@ export default function Dashboard() {
               )} - ${formatTime(visibleEndTime)}`
             );
 
-            fetchMinuteData(visibleStartTime, visibleEndTime)
+            fetchMinuteDataForCurrency(
+              selectedCurrency,
+              visibleStartTime,
+              visibleEndTime
+            )
               .then((newMinuteData) => {
                 if (newMinuteData.length > 0) {
                   console.log(
@@ -770,15 +863,17 @@ export default function Dashboard() {
       chartData,
       zoomState,
       handleResetZoom,
-      fetchMinuteData,
+      fetchMinuteDataForCurrency,
       minuteDataRange,
       isLoadingMinuteData,
+      selectedCurrency,
     ]
   );
 
   // Handle touch start (track initial pinch distance)
   const handleTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
+      // For pinch-to-zoom (2 fingers)
       if (event.touches.length === 2) {
         // It's a pinch gesture
         const touch1 = event.touches[0];
@@ -788,6 +883,14 @@ export default function Dashboard() {
           touch2.clientY - touch1.clientY
         );
 
+        // Get center point of the two touches
+        const centerX = (touch1.clientX + touch2.clientX) / 2;
+        const centerY = (touch1.clientY + touch2.clientY) / 2;
+
+        const chartRect = event.currentTarget.getBoundingClientRect();
+        const xPercent = (centerX - chartRect.left) / chartRect.width;
+        const yPercent = (centerY - chartRect.top) / chartRect.height;
+
         setTouchState({
           initialDistance: distance,
           initialDomains: {
@@ -796,16 +899,28 @@ export default function Dashboard() {
               Math.min(...chartData.map((d) => d.close)) * 0.99,
               Math.max(...chartData.map((d) => d.close)) * 1.01,
             ],
+            centerX: xPercent,
+            centerY: yPercent,
           },
+        });
+      }
+      // For panning (1 finger)
+      else if (event.touches.length === 1 && zoomState.isZoomed) {
+        const touch = event.touches[0];
+        setPanState({
+          isPanning: true,
+          lastMouseX: touch.clientX,
+          lastMouseY: touch.clientY,
         });
       }
     },
     [chartData, zoomState]
   );
 
-  // Handle touch move (calculate zoom based on pinch)
+  // Enhanced touch move handler for better mobile experience
   const handleTouchMove = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
+      // For pinch-to-zoom
       if (event.touches.length === 2) {
         const touch1 = event.touches[0];
         const touch2 = event.touches[1];
@@ -814,23 +929,50 @@ export default function Dashboard() {
           touch2.clientY - touch1.clientY
         );
 
-        const zoomRatio = touchState.initialDistance / distance;
+        // Calculate zoom factor based on pinch
+        const zoomFactor = touchState.initialDistance / distance;
 
-        // Calculate new domains based on pinch zoom
+        // Use the initial pinch center for zooming
+        const xPercent = touchState.initialDomains.centerX;
+        const yPercent = touchState.initialDomains.centerY;
+
+        // Calculate domain ranges
         const xRange =
           touchState.initialDomains.x[1] - touchState.initialDomains.x[0];
         const yRange =
           touchState.initialDomains.y[1] - touchState.initialDomains.y[0];
 
+        // Calculate new domains centered around pinch center point
         const newXDomain: [number, number] = [
-          touchState.initialDomains.x[0] + (xRange * (1 - zoomRatio)) / 2,
-          touchState.initialDomains.x[1] - (xRange * (1 - zoomRatio)) / 2,
+          touchState.initialDomains.x[0] - xRange * (1 - zoomFactor) * xPercent,
+          touchState.initialDomains.x[1] +
+            xRange * (1 - zoomFactor) * (1 - xPercent),
         ];
 
         const newYDomain: [number, number] = [
-          touchState.initialDomains.y[0] + (yRange * (1 - zoomRatio)) / 2,
-          touchState.initialDomains.y[1] - (yRange * (1 - zoomRatio)) / 2,
+          touchState.initialDomains.y[0] -
+            yRange * (1 - zoomFactor) * (1 - yPercent),
+          touchState.initialDomains.y[1] + yRange * (1 - zoomFactor) * yPercent,
         ];
+
+        // Apply zoom limits
+        if (zoomFactor > 1) {
+          // Don't zoom out beyond original full domain
+          const fullXDomain = [0, chartData.length - 1];
+          const fullYDomain = [
+            Math.min(...chartData.map((d) => d.close)) * 0.99,
+            Math.max(...chartData.map((d) => d.close)) * 1.01,
+          ];
+
+          if (
+            newXDomain[0] < fullXDomain[0] &&
+            newXDomain[1] > fullXDomain[1] &&
+            newYDomain[0] < fullYDomain[0] &&
+            newYDomain[1] > fullYDomain[1]
+          ) {
+            return handleResetZoom();
+          }
+        }
 
         setZoomState({
           xDomain: newXDomain,
@@ -838,9 +980,89 @@ export default function Dashboard() {
           isZoomed: true,
         });
       }
+      // For panning with one finger
+      else if (
+        event.touches.length === 1 &&
+        panState.isPanning &&
+        zoomState.isZoomed
+      ) {
+        const touch = event.touches[0];
+
+        // Calculate movement delta
+        const deltaX = touch.clientX - panState.lastMouseX;
+        const deltaY = touch.clientY - panState.lastMouseY;
+
+        // Get current domains
+        const currentXDomain = zoomState.xDomain || [0, chartData.length - 1];
+        const currentYDomain = zoomState.yDomain || [
+          Math.min(...chartData.map((d) => d.close)) * 0.99,
+          Math.max(...chartData.map((d) => d.close)) * 1.01,
+        ];
+
+        // Calculate domain ranges
+        const xRange = currentXDomain[1] - currentXDomain[0];
+        const yRange = currentYDomain[1] - currentYDomain[0];
+
+        // Get chart dimensions
+        const chartRect = event.currentTarget.getBoundingClientRect();
+
+        // Calculate domain shifts
+        const xShift = (deltaX / chartRect.width) * xRange * -2; // Increased sensitivity for mobile
+        const yShift = (deltaY / chartRect.height) * yRange;
+
+        // Calculate new domains
+        const newXDomain: [number, number] = [
+          currentXDomain[0] + xShift,
+          currentXDomain[1] + xShift,
+        ];
+
+        const newYDomain: [number, number] = [
+          currentYDomain[0] + yShift,
+          currentYDomain[1] + yShift,
+        ];
+
+        // Apply bounds checking
+        const fullXDomain = [0, chartData.length - 1];
+        let adjustedXDomain = [...newXDomain] as [number, number];
+
+        if (newXDomain[0] < fullXDomain[0]) {
+          const overflow = fullXDomain[0] - newXDomain[0];
+          adjustedXDomain = [fullXDomain[0], newXDomain[1] - overflow];
+        }
+
+        if (newXDomain[1] > fullXDomain[1]) {
+          const overflow = newXDomain[1] - fullXDomain[1];
+          adjustedXDomain = [newXDomain[0] + overflow, fullXDomain[1]];
+        }
+
+        // Update state
+        setZoomState((prev) => ({
+          ...prev,
+          xDomain: adjustedXDomain,
+          yDomain: newYDomain,
+        }));
+
+        // Update last touch position
+        setPanState({
+          isPanning: true,
+          lastMouseX: touch.clientX,
+          lastMouseY: touch.clientY,
+        });
+
+        // Prevent default to avoid scrolling
+        event.preventDefault();
+      }
     },
-    [touchState]
+    [touchState, panState, zoomState, chartData, handleResetZoom]
   );
+
+  // Add touch end handler
+  const handleTouchEnd = useCallback(() => {
+    setPanState((prev) => ({
+      ...prev,
+      isPanning: false,
+    }));
+  }, []);
 
   // Add these handlers for panning
   const handleMouseDown = useCallback(
@@ -1051,180 +1273,20 @@ export default function Dashboard() {
     chartData,
     zoomState,
     handleResetZoom,
-    fetchMinuteData,
+    fetchMinuteDataForCurrency,
     minuteDataRange,
     isLoadingMinuteData,
-  ]);
-
-  useEffect(() => {
-    const chartContainer = chartContainerRef.current;
-    if (!chartContainer) return;
-
-    // Create a wheel handler that can be properly removed later
-    const handleWheelEvent = (event: WheelEvent) => {
-      // Prevent default scrolling behavior
-      event.preventDefault();
-
-      // Process the wheel event with your zoom logic
-      if (chartData.length === 0) return;
-
-      // Get current domains or set defaults if undefined
-      const currentXDomain = zoomState.xDomain || [0, chartData.length - 1];
-      const currentYDomain = zoomState.yDomain || [
-        Math.min(...chartData.map((d) => d.close)) * 0.99,
-        Math.max(...chartData.map((d) => d.close)) * 1.01,
-      ];
-
-      // Calculate current ranges
-      const currentXRange = currentXDomain[1] - currentXDomain[0];
-      const currentYRange = currentYDomain[1] - currentYDomain[0];
-
-      // Determine zoom direction and factor
-      const zoomFactor = event.deltaY > 0 ? 1.1 : 0.9; // Zoom in or out
-
-      // Check zoom limits before proceeding
-      // For x-axis: Don't allow zooming in to less than 3 data points
-      if (zoomFactor < 1 && currentXRange * zoomFactor < 3) {
-        return; // Prevent excessive x-axis zoom
-      }
-
-      // For y-axis: Don't allow zooming in to less than 0.5% of the full price range
-      const fullYRange =
-        Math.max(...chartData.map((d) => d.close)) -
-        Math.min(...chartData.map((d) => d.close));
-      const minYRange = fullYRange * 0.005; // 0.5% of full range
-
-      if (zoomFactor < 1 && currentYRange * zoomFactor < minYRange) {
-        return; // Prevent excessive y-axis zoom
-      }
-
-      // Calculate zoom center based on cursor position
-      const chartRect = chartContainer.getBoundingClientRect();
-      const xPercent = (event.clientX - chartRect.left) / chartRect.width;
-      const yPercent = (event.clientY - chartRect.top) / chartRect.height;
-
-      // Calculate new domains centered around cursor position
-      const newXDomain: [number, number] = [
-        currentXDomain[0] -
-          (currentXRange * zoomFactor - currentXRange) * xPercent,
-        currentXDomain[1] +
-          (currentXRange * zoomFactor - currentXRange) * (1 - xPercent),
-      ];
-
-      const newYDomain: [number, number] = [
-        currentYDomain[0] -
-          (currentYRange * zoomFactor - currentYRange) * (1 - yPercent),
-        currentYDomain[1] +
-          (currentYRange * zoomFactor - currentYRange) * yPercent,
-      ];
-
-      // Ensure we don't zoom out beyond the original domain
-      const fullXDomain = [0, chartData.length - 1];
-      const fullYDomain = [
-        Math.min(...chartData.map((d) => d.close)) * 0.99,
-        Math.max(...chartData.map((d) => d.close)) * 1.01,
-      ];
-
-      // Limit maximum zoom out
-      if (zoomFactor > 1) {
-        // Don't zoom out beyond original domain
-        if (
-          newXDomain[0] < fullXDomain[0] &&
-          newXDomain[1] > fullXDomain[1] &&
-          newYDomain[0] < fullYDomain[0] &&
-          newYDomain[1] > fullYDomain[1]
-        ) {
-          // Reset to full view instead of allowing excessive zoom out
-          handleResetZoom();
-          return;
-        }
-      }
-
-      // After calculating the new domains, check if we should fetch minute data
-      // Only when zooming in (zoomFactor < 1)
-      if (zoomFactor < 1) {
-        // Get the visible data points based on the new zoom domains
-        const visibleStartIdx = Math.max(0, Math.ceil(newXDomain[0]));
-        const visibleEndIdx = Math.min(
-          chartData.length - 1,
-          Math.floor(newXDomain[1])
-        );
-
-        // Calculate zoom width to determine if we're zoomed in enough to show minute data
-        const zoomWidth = newXDomain[1] - newXDomain[0];
-
-        // Only fetch minute data if the visible area is small enough
-        if (visibleStartIdx < visibleEndIdx) {
-          const visibleStartTime = chartData[visibleStartIdx].timestamp * 1000;
-          const visibleEndTime = chartData[visibleEndIdx].timestamp * 1000;
-
-          // Force fetch if we're zoomed in enough, regardless of what data we already have
-          const shouldFetch = zoomWidth <= minuteDataThreshold;
-
-          if (shouldFetch && !isLoadingMinuteData) {
-            // Clear any previous minute data
-            setMinuteData([]);
-
-            fetchMinuteData(visibleStartTime, visibleEndTime)
-              .then((newMinuteData) => {
-                if (newMinuteData.length > 0) {
-                  setMinuteData(newMinuteData);
-                }
-              })
-              .catch((err) => {
-                console.error("Failed to load minute data:", err);
-              });
-          }
-        }
-      }
-
-      // Set zoom state at the end
-      setZoomState({
-        xDomain: newXDomain,
-        yDomain: newYDomain,
-        isZoomed: true,
-      });
-    };
-
-    // Use type assertion to fix TypeScript error with passive option
-    chartContainer.addEventListener("wheel", handleWheelEvent, {
-      passive: false,
-    } as AddEventListenerOptions);
-
-    // Clean up listener on unmount
-    return () => {
-      chartContainer.removeEventListener("wheel", handleWheelEvent, {
-        passive: false,
-      } as AddEventListenerOptions);
-    };
-  }, [
-    chartData,
-    zoomState,
-    handleResetZoom,
-    fetchMinuteData,
-    minuteDataRange,
-    isLoadingMinuteData,
-    minuteDataThreshold,
   ]);
 
   // ------------------ On Mount ------------------
+  // 9. Update the initial load effect
   useEffect(() => {
-    // 1) Fetch historical + current data
-    initializeDashboard().then((success) => {
-      // 2) Only connect WS for live updates if we have historical data
-      if (success) {
-        console.log(
-          "Historical data loaded successfully. Connecting WebSocket..."
-        );
-        connectWebSocket();
-      } else {
-        console.error(
-          "Failed to load historical data. Not connecting WebSocket."
-        );
-      }
+    // First, fetch the top currencies
+    fetchTopCurrencies().then(() => {
+      // Then initialize with default BTC
+      initializeDashboardForCurrency("BTC");
     });
 
-    // Cleanup on unmount
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
@@ -1234,20 +1296,22 @@ export default function Dashboard() {
         clearTimeout(batchTimerRef.current);
       }
     };
-  }, [initializeDashboard, connectWebSocket]);
+  }, [fetchTopCurrencies, initializeDashboardForCurrency]);
 
   // ------------------ RENDER ------------------
   return (
-    <div className="w-full max-w-7xl mx-auto p-4">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+    <div className="w-full max-w-7xl mx-auto p-2 sm:p-4">
+      {/* Header - make it stack on mobile */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
         <div>
-          <h1 className="text-3xl font-bold">CryptoCompare BTC Dashboard</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-xl sm:text-3xl font-bold">
+            Crypto-Pilot Dashboard
+          </h1>
+          {/* <p className="text-xs sm:text-sm text-muted-foreground">
             Live BTC/USD price (via WebSocket) &amp; 24h hourly chart (REST)
-          </p>
+          </p> */}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
           <div className="flex items-center gap-2">
             <span
               className={cn(
@@ -1255,7 +1319,7 @@ export default function Dashboard() {
                 wsConnected ? "bg-green-500" : "bg-red-500"
               )}
             />
-            <span className="text-sm">
+            <span className="text-xs sm:text-sm">
               {wsConnected ? "Connected" : "Disconnected"}
             </span>
             <Button
@@ -1264,11 +1328,11 @@ export default function Dashboard() {
               onClick={handleRefresh}
               disabled={loading}
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
               {loading ? "Loading" : "Refresh"}
             </Button>
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-xs sm:text-sm text-muted-foreground">
             Last updated: {lastUpdated || "Never"}
           </div>
           <ModeToggle />
@@ -1277,90 +1341,26 @@ export default function Dashboard() {
 
       {/* Error Display */}
       {error && (
-        <Card className="mb-6 border-red-500">
-          <CardContent className="p-4 text-red-500">{error}</CardContent>
+        <Card className="mb-4 sm:mb-6 border-red-500">
+          <CardContent className="p-2 sm:p-4 text-red-500 text-sm">
+            {error}
+          </CardContent>
         </Card>
       )}
 
-      {/* Two column layout */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Left column - Top Currencies Table */}
-        <div className="md:col-span-1">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Top 10 Cryptocurrencies</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-auto max-h-[600px]">
-                <Table>
-                  <TableCaption>
-                    Updated in real-time via WebSocket
-                  </TableCaption>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[80px]">Symbol</TableHead>
-                      <TableHead className="text-right">Price</TableHead>
-                      <TableHead className="text-right">Market Cap</TableHead>
-                      <TableHead className="text-right">24h</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {isLoadingCurrencies ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center">
-                          Loading...
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      topCurrencies.map((currency) => (
-                        <TableRow key={currency.symbol}>
-                          <TableCell className="font-medium">
-                            {currency.symbol}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(currency.price)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(currency.marketCap, true)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              {currency.change24h > 0 ? (
-                                <ArrowUp className="h-3 w-3 text-green-500" />
-                              ) : (
-                                <ArrowDown className="h-3 w-3 text-red-500" />
-                              )}
-                              <Badge
-                                variant={
-                                  currency.change24h > 0
-                                    ? "outline"
-                                    : "destructive"
-                                }
-                                className="text-xs"
-                              >
-                                {Math.abs(currency.change24h).toFixed(2)}%
-                              </Badge>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
+      {/* Reverse column order on mobile so chart appears first */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
         {/* Right column - Ticker and Chart */}
-        <div className="md:col-span-2">
+        <div className="md:col-span-2 order-1 md:order-2">
           {/* Ticker Info */}
           {cryptoData && (
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle>Ticker Info (BTC/USD)</CardTitle>
+            <Card className="mb-3 sm:mb-4">
+              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+                <CardTitle className="text-base sm:text-lg">
+                  Ticker Info ({selectedCurrency}/USD)
+                </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-3 sm:p-4 pt-2 sm:pt-3 text-sm sm:text-base">
                 <div>Last Price: {formatCurrency(cryptoData.price)}</div>
               </CardContent>
             </Card>
@@ -1368,22 +1368,25 @@ export default function Dashboard() {
 
           {/* Live Chart */}
           {chartData.length > 0 && (
-            <Card className="mb-4">
-              <CardHeader>
+            <Card className="mb-3 sm:mb-4">
+              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
                 <div className="flex justify-between items-center">
-                  <CardTitle>Live 24h Hourly Chart</CardTitle>
+                  <CardTitle className="text-base sm:text-lg">
+                    {selectedCurrency}/USD 24h Chart
+                  </CardTitle>
                   {zoomState.isZoomed && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleResetZoom}
+                      className="text-xs"
                     >
                       Reset Zoom
                     </Button>
                   )}
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-2 sm:p-4">
                 <div
                   ref={chartContainerRef}
                   onMouseDown={handleMouseDown}
@@ -1392,9 +1395,10 @@ export default function Dashboard() {
                   onMouseLeave={handleMouseLeave}
                   onTouchStart={handleTouchStart}
                   onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
                   style={{
                     width: "100%",
-                    height: 300,
+                    height: 250,
                     touchAction: "none",
                     cursor: panState.isPanning
                       ? "grabbing"
@@ -1407,14 +1411,14 @@ export default function Dashboard() {
                     msUserSelect: "none",
                   }}
                 >
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={250}>
                     <LineChart
                       data={
                         zoomState.isZoomed && minuteData.length > 0
                           ? minuteData
                           : chartData
                       }
-                      margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                      margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
                     >
                       <CartesianGrid
                         strokeDasharray="3 3"
@@ -1423,65 +1427,20 @@ export default function Dashboard() {
                       />
                       <XAxis
                         dataKey="time"
-                        tick={{ fontSize: 10 }}
+                        tick={{ fontSize: 9 }}
                         domain={zoomState.xDomain}
                         allowDataOverflow
+                        interval="preserveStartEnd"
+                        minTickGap={15}
                       />
                       <YAxis
                         domain={zoomState.yDomain || ["auto", "auto"]}
                         allowDataOverflow
-                        tick={{ fontSize: 10 }}
+                        tick={{ fontSize: 9 }}
                         tickFormatter={(val: number) => val.toFixed(0)}
+                        width={35}
                       />
-                      <Tooltip
-                        contentStyle={{ fontSize: "0.75rem" }}
-                        formatter={(value, name) => {
-                          if (name === "close")
-                            return formatCurrency(value as number);
-                          if (name === "high")
-                            return formatCurrency(value as number);
-                          if (name === "low")
-                            return formatCurrency(value as number);
-                          if (name === "open")
-                            return formatCurrency(value as number);
-                          if (name === "volume") return value;
-                          return value;
-                        }}
-                        content={({ active, payload, label }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload;
-                            return (
-                              <div className="p-2 bg-background border rounded-md shadow-sm">
-                                <p className="text-xs font-medium">{`Time: ${label}`}</p>
-                                <p className="text-xs">
-                                  Price: {formatCurrency(data.close)}
-                                </p>
-                                {data.high && (
-                                  <p className="text-xs">
-                                    High: {formatCurrency(data.high)}
-                                  </p>
-                                )}
-                                {data.low && (
-                                  <p className="text-xs">
-                                    Low: {formatCurrency(data.low)}
-                                  </p>
-                                )}
-                                {data.open && (
-                                  <p className="text-xs">
-                                    Open: {formatCurrency(data.open)}
-                                  </p>
-                                )}
-                                {data.volume && (
-                                  <p className="text-xs">
-                                    Volume: {Math.round(data.volume)}
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
+                      {/* Add this Line component which was missing */}
                       <Line
                         type="monotone"
                         dataKey="close"
@@ -1491,7 +1450,13 @@ export default function Dashboard() {
                         activeDot={{ r: 6 }}
                         isAnimationActive={false}
                       />
-                      {/* Add a loading indicator for minute data */}
+                      <Tooltip
+                        formatter={(value: number) => [
+                          formatCurrency(value),
+                          `${selectedCurrency}/USD`,
+                        ]}
+                        labelFormatter={(label) => `Time: ${label}`}
+                      />
                       {isLoadingMinuteData && (
                         <text
                           x="50%"
@@ -1509,20 +1474,105 @@ export default function Dashboard() {
                   </ResponsiveContainer>
                 </div>
               </CardContent>
-              <CardFooter className="border-t p-4">
+              <CardFooter className="border-t p-2 sm:p-4">
                 <div className="w-full">
-                  <p className="text-xs text-muted-foreground mb-2">
+                  <p className="text-[10px] sm:text-xs text-muted-foreground mb-1 sm:mb-2">
                     Data from Coindesk API; live updates from CryptoCompare
                     WebSocket.
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    Tip: Use your mouse wheel to zoom in and out. Use the Reset
-                    Zoom button to return to full view.
+                  <p className="text-[10px] sm:text-xs text-muted-foreground">
+                    <span className="hidden sm:inline">
+                      Tip: Use your mouse wheel to zoom in and out.{" "}
+                    </span>
+                    <span className="sm:hidden">Tip: Pinch to zoom. </span>
+                    Tap the Reset Zoom button to return to full view.
                   </p>
                 </div>
               </CardFooter>
             </Card>
           )}
+        </div>
+
+        {/* Left column - Top Currencies Table (shows after chart on mobile) */}
+        <div className="md:col-span-1 order-2 md:order-1">
+          <Card className="h-full">
+            <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardTitle className="text-base sm:text-lg">
+                Top 10 Cryptocurrencies
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto max-h-[400px] sm:max-h-[600px]">
+                <Table className="w-full">
+                  <TableCaption className="text-[10px] sm:text-xs">
+                    Updated in real-time via WebSocket
+                  </TableCaption>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[60px] text-xs">Symbol</TableHead>
+                      <TableHead className="text-right text-xs">
+                        Price
+                      </TableHead>
+                      <TableHead className="text-right text-xs hidden sm:table-cell">
+                        Market Cap
+                      </TableHead>
+                      <TableHead className="text-right text-xs">24h</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoadingCurrencies ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-xs">
+                          Loading...
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      topCurrencies.map((currency) => (
+                        <TableRow
+                          key={currency.symbol}
+                          className={cn(
+                            "cursor-pointer hover:bg-muted/50 transition-colors",
+                            selectedCurrency === currency.symbol &&
+                              "bg-muted/30"
+                          )}
+                          onClick={() => handleCurrencySelect(currency.symbol)}
+                        >
+                          <TableCell className="font-medium text-xs py-2">
+                            {currency.symbol}
+                          </TableCell>
+                          <TableCell className="text-right text-xs py-2">
+                            {formatCurrency(currency.price)}
+                          </TableCell>
+                          <TableCell className="text-right text-xs py-2 hidden sm:table-cell">
+                            {formatCurrency(currency.marketCap, true)}
+                          </TableCell>
+                          <TableCell className="text-right text-xs py-2">
+                            <div className="flex items-center justify-end gap-1">
+                              {currency.change24h > 0 ? (
+                                <ArrowUp className="h-3 w-3 text-green-500" />
+                              ) : (
+                                <ArrowDown className="h-3 w-3 text-red-500" />
+                              )}
+                              <Badge
+                                variant={
+                                  currency.change24h > 0
+                                    ? "outline"
+                                    : "destructive"
+                                }
+                                className="text-[10px] px-1 py-0"
+                              >
+                                {Math.abs(currency.change24h).toFixed(1)}%
+                              </Badge>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
