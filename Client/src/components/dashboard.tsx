@@ -1,17 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ModeToggle } from "@/components/mode-toggle";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ArrowDownIcon, ArrowUpIcon, RefreshCw } from "lucide-react";
+import axios from "axios";
 import {
   ResponsiveContainer,
   LineChart,
@@ -21,415 +11,393 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { cn } from "@/lib/utils";
-import axios from "axios";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+
+// Example UI components – adjust these to your project's design.
 import {
-  faBitcoin,
-  faEthereum,
-  faTelegramPlane,
-} from "@fortawesome/free-brands-svg-icons";
-import { faCoins } from "@fortawesome/free-solid-svg-icons";
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ModeToggle } from "@/components/mode-toggle";
+import { RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ================== CONFIG ==================
-const MAX_COINS = 10;
-const MAX_CHARTS = 5;
+const HISTORICAL_ENDPOINT =
+  "https://data-api.coindesk.com/index/cc/v1/historical/hours";
+const CURRENT_PRICE_ENDPOINT =
+  "https://data-api.coindesk.com/index/cc/v1/latest/tick?market=cadli&instruments=BTC-USD&apply_mapping=true";
 
-// Ask for data in 15-min intervals for the last 24h
-// so we get about 96 points in the chart
-const CHART_INTERVAL = "m15";  // or "m5", "m30", "h1" etc.
-const CHART_RANGE_HOURS = 24;  
-const WS_UPDATE_INTERVAL = 2000;
-const FETCH_COOLDOWN_MS = 15 * 60 * 1000;
-const RATE_LIMIT_COOLDOWN_MS = 2 * 60 * 1000;
-// ...existing code...
-const MAX_CHART_POINTS = 100; 
-// ...existing code...
-interface CoinCapAsset {
-  id: string;
-  symbol: string;
-  name: string;
-  priceUsd: string;
-  changePercent24Hr: string;
-  volumeUsd24Hr: string;
-  marketCapUsd: string;
-}
-interface CryptoInfo {
-  id: string;
-  symbol: string;
-  name: string;
-  price: number;
-  changePercent24h: number;
-  volume24h: number;
-  marketCap: number;
-}
-interface KlineData {
-  time: string;  
-  price: number;
-}
-interface BinanceWebSocket extends WebSocket {
-  pingInterval?: NodeJS.Timeout;
-}
-
-// Font Awesome icon map
-const ICON_MAP: Record<string, any> = {
-  bitcoin: faBitcoin,
-  ethereum: faEthereum,
-  ripple: faTelegramPlane,
-  binancecoin: faCoins,
-  solana: faCoins,
-  cardano: faCoins,
-  dogecoin: faCoins,
-  polkadot: faCoins,
-  tether: faCoins,
-  default: faCoins,
+// CryptoCompare WebSocket endpoint & subscription
+const WS_ENDPOINT = "wss://data-streamer.cryptocompare.com";
+const SUBSCRIBE_MESSAGE = {
+  action: "SUBSCRIBE",
+  type: "index_cc_v1_latest_tick",
+  market: "cadli",
+  instruments: ["BTC-USD"],
+  groups: ["VALUE", "CURRENT_HOUR"],
 };
 
-// Helpers for formatting
-function formatCurrency(num: number): string {
-  if (typeof num !== "number" || isNaN(num)) return "$0.00";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num);
-}
-function formatLargeNumber(num: number): string {
-  if (typeof num !== "number" || isNaN(num)) return "$0.00";
-  if (num >= 1e12) return `$${(num / 1e12).toFixed(2)}T`;
-  if (num >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
-  if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
-  return formatCurrency(num);
-}
-function formatTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// Polling/batch settings for WS updates
+const BATCH_THRESHOLD = 5; // Process 5 messages at once
+const BATCH_WINDOW = 2000; // Or every 2 seconds
+const MAX_CHART_POINTS = 1000; // Increase this to allow for more historical + live data points
+
+// ================== TYPE DEFINITIONS ==================
+interface HistoricalResponse {
+  Data: any[]; // Array of historical data objects
+  Err?: Record<string, any>;
 }
 
+interface CryptoInfo {
+  price: number;
+}
+
+interface KlineData {
+  time: string;
+  close: number;
+}
+
+interface WSMessage {
+  TYPE: string; // e.g. "1101", "4002", etc.
+  INSTRUMENT?: string;
+  VALUE?: number; // price
+  // other fields omitted
+}
+
+// ------------------ Dashboard Component ------------------
 export default function Dashboard() {
-  const [cryptoData, setCryptoData] = useState<CryptoInfo[]>([]);
-  const [chartData, setChartData] = useState<Record<string, KlineData[]>>({});
-  const [loading, setLoading] = useState(true);
+  const [cryptoData, setCryptoData] = useState<CryptoInfo | null>(null);
+  const [chartData, setChartData] = useState<KlineData[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState("");
-  const [wsConnected, setWsConnected] = useState(false);
+  const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const [lastUpdated, setLastUpdated] = useState<string>("");
 
-  const [apiCoolingDown, setApiCoolingDown] = useState(false);
-  const lastFetchAttemptRef = useRef<number>(0);
+  // Refs for WebSocket and batching
+  const wsRef = useRef<WebSocket | null>(null);
+  const messageCountRef = useRef<number>(0);
+  const batchTimerRef = useRef<number | null>(null);
+  const priceBufferRef = useRef<number | null>(null);
+  const lastChartUpdateRef = useRef<number>(Date.now());
+  const HOUR_IN_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 
-  const wsRef = useRef<BinanceWebSocket | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
-  const reconnectAttemptsRef = useRef<number>(0);
-  const scheduledUpdateRef = useRef<NodeJS.Timeout | null>(null);
-  const priceBufferRef = useRef<Record<string, number>>({});
+  // ------------------ Helper Functions ------------------
+  function formatCurrency(num: number): string {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num);
+  }
 
-  // 1) fetchTopCoins
-  const fetchTopCoins = async (): Promise<CryptoInfo[]> => {
-    const now = Date.now();
-    const hasCache = !!localStorage.getItem("topCoins");
-    if ((apiCoolingDown || now - lastFetchAttemptRef.current < FETCH_COOLDOWN_MS) && hasCache) {
-      // use cached
-      const cachedString = localStorage.getItem("topCoins");
-      const cachedTime = localStorage.getItem("topCoinsTime");
-      if (cachedString && cachedTime) {
-        const age = now - parseInt(cachedTime, 10);
-        if (age < FETCH_COOLDOWN_MS) {
-          try {
-            const parsed = JSON.parse(cachedString) as CryptoInfo[];
-            if (parsed.length > 0) {
-              console.log("Using cached topCoins data from localStorage.");
-              setLoading(false);
-              return parsed;
-            }
-          } catch {}
-        }
-      }
-      throw new Error("CoinCap fetch is on cooldown. No fresh data available.");
-    }
+  function formatTime(timestamp: number): string {
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
 
-    lastFetchAttemptRef.current = now;
-    setLoading(true);
-
+  // ------------------ REST: Fetch Historical Data (24h Hourly) ------------------
+  const fetchHistoricalData = useCallback(async (): Promise<KlineData[]> => {
     try {
-      const resp = await axios.get("https://api.coincap.io/v2/assets", {
-        params: { limit: 15 },
-        timeout: 10000,
+      const params = {
+        market: "cadli",
+        instrument: "BTC-USD",
+        limit: 24, // Make sure we get exactly 24 hours
+        aggregate: 1,
+        fill: "true",
+        apply_mapping: "true",
+        response_format: "JSON",
+      };
+      const resp = await axios.get<HistoricalResponse>(HISTORICAL_ENDPOINT, {
+        params,
       });
-      if (!resp.data?.data) throw new Error("No data from CoinCap");
-      const raw = resp.data.data as CoinCapAsset[];
-      const top10 = raw.slice(0, MAX_COINS).map((c) => ({
-        id: c.id,
-        symbol: c.symbol,
-        name: c.name,
-        price: parseFloat(c.priceUsd),
-        changePercent24h: parseFloat(c.changePercent24Hr),
-        volume24h: parseFloat(c.volumeUsd24Hr),
-        marketCap: parseFloat(c.marketCapUsd),
-      }));
-      localStorage.setItem("topCoins", JSON.stringify(top10));
-      localStorage.setItem("topCoinsTime", now.toString());
-      setLoading(false);
-      return top10;
+      console.log("DEBUG fetchHistoricalData response:", resp.data);
+
+      if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
+        throw new Error(
+          "Historical API Error: " + JSON.stringify(resp.data.Err)
+        );
+      }
+
+      // Ensure we have data array
+      const dataArray = resp.data.Data;
+      if (!Array.isArray(dataArray) || dataArray.length === 0) {
+        throw new Error(
+          "No historical data found or unexpected response structure"
+        );
+      }
+
+      // Map each historical point using the structure from your example
+      const sortedData = dataArray
+        .map((item: any) => ({
+          timestamp: item.TIMESTAMP, // Use TIMESTAMP from your example
+          time: formatTime(item.TIMESTAMP * 1000),
+          close: item.CLOSE, // Use CLOSE from your example
+        }))
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      console.log(`Processed ${sortedData.length} historical data points`);
+      return sortedData.map(({ time, close }) => ({ time, close }));
     } catch (err: any) {
-      console.error("fetchTopCoins error:", err?.message);
-      setLoading(false);
-
-      if (err?.response?.status === 429) {
-        setApiCoolingDown(true);
-        setTimeout(() => setApiCoolingDown(false), RATE_LIMIT_COOLDOWN_MS);
-        throw new Error("Rate-limited by CoinCap. Using cached data if any...");
-      }
-      // fallback
-      const cachedString = localStorage.getItem("topCoins");
-      if (cachedString) {
-        try {
-          const parsed = JSON.parse(cachedString) as CryptoInfo[];
-          if (parsed.length > 0) {
-            console.log("Using fallback localStorage topCoins data due to error.");
-            return parsed;
-          }
-        } catch {}
-      }
-      throw err;
+      console.error("Error fetching historical data:", err?.message);
+      throw new Error("Error fetching historical data from Coindesk");
     }
-  };
+  }, []);
 
-  // 2) fetchHistory (use 24h but with 15-min intervals)
-  const fetchHistory = async (coinId: string): Promise<KlineData[]> => {
-    const cacheKey = `history_${coinId}`;
-    const cacheTimeKey = `history_${coinId}_time`;
-    const now = Date.now();
-    const hasCache = !!localStorage.getItem(cacheKey);
-
-    if ((apiCoolingDown || (now - lastFetchAttemptRef.current < FETCH_COOLDOWN_MS)) && hasCache) {
-      const existing = localStorage.getItem(cacheKey);
-      const existingT = localStorage.getItem(cacheTimeKey);
-      if (existing && existingT) {
-        const age = now - parseInt(existingT, 10);
-        if (age < FETCH_COOLDOWN_MS) {
-          try {
-            return JSON.parse(existing) as KlineData[];
-          } catch {}
-        }
-        return JSON.parse(existing) as KlineData[];
-      }
-      console.warn(`No fresh history for ${coinId} and no valid cache => returning empty.`);
-      return [];
-    }
-
-    // fetch 24h of data
+  // ------------------ REST: Fetch Current Ticker Data ------------------
+  const fetchTickerData = useCallback(async (): Promise<CryptoInfo> => {
     try {
-      const end = now;
-      const start = end - CHART_RANGE_HOURS * 3600000; // 24h
-      const resp = await axios.get(`https://api.coincap.io/v2/assets/${coinId}/history`, {
-        params: {
-          interval: CHART_INTERVAL, // e.g. "m15"
-          start,
-          end,
-        },
-        timeout: 10000,
-      });
-      if (!resp.data?.data) return [];
-      // Build array from each point
-      const hist = resp.data.data.map((p: any) => ({
-        time: formatTime(p.time),
-        price: parseFloat(p.priceUsd),
-      }));
-      localStorage.setItem(cacheKey, JSON.stringify(hist));
-      localStorage.setItem(cacheTimeKey, now.toString());
-      return hist;
-    } catch (err: any) {
-      console.error(`Error fetching history for ${coinId}:`, err?.message);
-      if (err?.response?.status === 429) {
-        setApiCoolingDown(true);
-        setTimeout(() => setApiCoolingDown(false), RATE_LIMIT_COOLDOWN_MS);
-      }
-      // fallback
-      const fallback = localStorage.getItem(cacheKey);
-      if (fallback) {
-        console.log(`Cannot fetch fresh history for ${coinId}. Using fallback localStorage data.`);
-        try {
-          return JSON.parse(fallback) as KlineData[];
-        } catch {}
-      }
-      return [];
-    }
-  };
+      const resp = await axios.get(CURRENT_PRICE_ENDPOINT);
+      console.log("DEBUG fetchTickerData response:", resp.data);
 
-  // 3) Combined
-  const fetchAllData = useCallback(async () => {
+      if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
+        throw new Error("API Error: " + JSON.stringify(resp.data.Err));
+      }
+
+      const tickerItem = resp.data.Data["BTC-USD"];
+      if (!tickerItem || tickerItem.VALUE === undefined) {
+        throw new Error("No BTC-USD tick data found");
+      }
+
+      return { price: tickerItem.VALUE };
+    } catch (err: any) {
+      console.error(
+        "DEBUG fetchTickerData error:",
+        err.response?.data || err.message
+      );
+      throw new Error("Error fetching current price from Coindesk");
+    }
+  }, []);
+
+  // ------------------ One-Time Initialization on Mount ------------------
+  const initializeDashboard = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const top10 = await fetchTopCoins();
-      setCryptoData(top10);
+      // 1) Fetch historical data for the chart
+      const historical = await fetchHistoricalData();
 
-      if (top10.length === 0) {
-        setError("No cryptocurrency data available.");
-        setLoading(false);
-        return;
-      }
-      // gather chart data for first 5
-      const chartSlice = top10.slice(0, MAX_CHARTS);
-      const results = await Promise.all(chartSlice.map((c) => fetchHistory(c.id)));
-      const newChartData: Record<string, KlineData[]> = {};
-      chartSlice.forEach((coin, i) => {
-        newChartData[coin.id] = results[i] || [];
-      });
-      setChartData(newChartData);
+      // Log to verify we have all 24 points
+      console.log(`Setting initial chart with ${historical.length} points`);
+
+      // Set chart data with ALL historical points
+      setChartData(historical);
+
+      // 2) Fetch current price
+      const ticker = await fetchTickerData();
+      setCryptoData(ticker);
 
       setLastUpdated(new Date().toLocaleTimeString());
       setLoading(false);
+      return historical.length > 0; // Return success status
     } catch (err: any) {
-      console.error("Error in fetchAllData:", err);
-      setError(err?.message || "Failed to fetch data");
+      console.error("Error in initializeDashboard:", err);
+      setError(err?.message || "Failed to initialize data");
       setLoading(false);
+      return false;
+    }
+  }, [fetchHistoricalData, fetchTickerData]);
+
+  // ------------------ WebSocket: Connect for Live Updates ------------------
+  const processBatch = useCallback(() => {
+    if (priceBufferRef.current !== null) {
+      const latestPrice = priceBufferRef.current;
+      const now = Date.now();
+
+      // Always update the displayed price (every 2 seconds)
+      setCryptoData((prev) =>
+        prev ? { ...prev, price: latestPrice } : { price: latestPrice }
+      );
+
+      // Only add new chart point if an hour has passed since the last chart update
+      const hourElapsed = now - lastChartUpdateRef.current >= HOUR_IN_MS;
+
+      if (hourElapsed) {
+        // Update the last chart update timestamp
+        lastChartUpdateRef.current = now;
+
+        // Append a new point to the chart but preserve historical data
+        setChartData((prev) => {
+          const newPoint: KlineData = {
+            time: formatTime(now),
+            close: latestPrice,
+          };
+
+          // Find the 24 historical points (they should be the first 24 in the array)
+          const historicalPoints = prev.slice(0, 24);
+          // Get the live points (everything after the first 24)
+          const livePoints = prev.slice(24);
+
+          // Add the new point to the live points
+          const updatedLivePoints = [...livePoints, newPoint];
+
+          // If we have too many live points, trim them but KEEP ALL historical points
+          if (updatedLivePoints.length > MAX_CHART_POINTS - 24) {
+            // Only trim from the live points, not the historical
+            updatedLivePoints.shift();
+          }
+
+          // Return historical + updated live points
+          return [...historicalPoints, ...updatedLivePoints];
+        });
+
+        console.log(`Added new hourly chart point at ${formatTime(now)}`);
+      }
+
+      // Always update the "last updated" indicator for price
+      setLastUpdated(new Date().toLocaleTimeString());
+    }
+
+    // Reset counters
+    messageCountRef.current = 0;
+    priceBufferRef.current = null;
+    if (batchTimerRef.current) {
+      clearTimeout(batchTimerRef.current);
+      batchTimerRef.current = null;
     }
   }, []);
 
-  // 4) CoinCap WebSocket
-  function connectCoincapWS(coinsData = cryptoData) {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    if (!coinsData || !coinsData.length) {
-      console.log("No data for WS connection");
+  const connectWebSocket = useCallback(() => {
+    // Only open a new WebSocket if one isn't already open
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log("WebSocket already connected.");
       return;
     }
-    const slice10 = coinsData.slice(0, 10);
-    const assetsQuery = slice10.map(c => c.id).join(',');
-    const url = `wss://ws.coincap.io/prices?assets=${assetsQuery}`;
-    console.log("Connecting CoinCap WebSocket ->", url);
-
-    const ws = new WebSocket(url);
+    console.log("Connecting to CryptoCompare Data Streamer ->", WS_ENDPOINT);
+    const ws = new WebSocket(WS_ENDPOINT);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("CoinCap WebSocket connected");
+      console.log("WebSocket connected");
       setWsConnected(true);
-      reconnectAttemptsRef.current = 0;
+      ws.send(JSON.stringify(SUBSCRIBE_MESSAGE));
     };
 
     ws.onmessage = (evt) => {
       try {
-        const updates = JSON.parse(evt.data) as Record<string,string>;
-        for (const [coinId, priceStr] of Object.entries(updates)) {
-          const match = coinsData.find(c => c.id === coinId);
-          if (match) {
-            priceBufferRef.current[coinId] = parseFloat(priceStr);
+        const msg: WSMessage = JSON.parse(evt.data);
+        // Watch for the "1101" type (VALUE update) from CryptoCompare
+        if (
+          msg.TYPE === "1101" &&
+          msg.INSTRUMENT === "BTC-USD" &&
+          msg.VALUE !== undefined
+        ) {
+          // Put the latest price into a buffer to be processed in batches
+          priceBufferRef.current = msg.VALUE;
+          messageCountRef.current += 1;
+
+          if (messageCountRef.current >= BATCH_THRESHOLD) {
+            processBatch();
+          } else if (!batchTimerRef.current) {
+            // If we haven't scheduled a batch yet, schedule one
+            batchTimerRef.current = window.setTimeout(() => {
+              processBatch();
+            }, BATCH_WINDOW);
           }
-        }
-        if (!scheduledUpdateRef.current && Object.keys(priceBufferRef.current).length > 0) {
-          scheduledUpdateRef.current = setTimeout(() => {
-            const finalUpdates = { ...priceBufferRef.current };
-            priceBufferRef.current = {};
-            scheduledUpdateRef.current = null;
-            applyCoincapUpdates(finalUpdates);
-          }, WS_UPDATE_INTERVAL);
+        } else {
+          // For debugging – other messages from the stream
+          console.log("Received WS message:", msg);
         }
       } catch (err) {
-        console.error("Error parsing CoinCap WS message:", err);
+        console.error("Error parsing WS message:", err);
       }
     };
 
     ws.onerror = (err) => {
-      console.error("CoinCap WS error:", err);
+      console.error("WebSocket error:", err);
       setWsConnected(false);
     };
 
     ws.onclose = (e) => {
-      console.log("CoinCap WS closed", e.code, e.reason);
+      console.log("WebSocket closed:", e.code, e.reason);
       setWsConnected(false);
-      if (reconnectAttemptsRef.current >= 5) {
-        console.log("Max WS reconnect attempts reached, stopping.");
-        return;
-      }
-      reconnectAttemptsRef.current += 1;
-      const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttemptsRef.current));
-      console.log(`Will attempt reconnection in ${delay / 1000}s`);
-      reconnectTimerRef.current = window.setTimeout(() => {
-        reconnectTimerRef.current = null;
-        connectCoincapWS(coinsData);
-      }, delay);
     };
-  }
+  }, [processBatch]);
 
-  function applyCoincapUpdates(updates: Record<string, number>) {
-    setCryptoData(prev => {
-      return prev.map((coin) => {
-        if (updates[coin.id] !== undefined) {
-          return { ...coin, price: updates[coin.id] };
-        }
-        return coin;
-      });
-    });
+  // ------------------ Refresh Button: Only Update Current Price ------------------
+  const handleRefresh = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const ticker = await fetchTickerData();
+      setCryptoData(ticker);
+      setLastUpdated(new Date().toLocaleTimeString());
+      setLoading(false);
+    } catch (err: any) {
+      console.error("Error in handleRefresh:", err);
+      setError(err?.message || "Failed to refresh price");
+      setLoading(false);
+    }
+  }, [fetchTickerData]);
 
-    setChartData(prev => {
-      const updated = { ...prev };
-      for (const [coinId, newPrice] of Object.entries(updates)) {
-        if (updated[coinId]) {
-          const newPt = { time: formatTime(Date.now()), price: newPrice };
-          const arr = [...updated[coinId], newPt];
-          if (arr.length > MAX_CHART_POINTS) arr.shift();
-          updated[coinId] = arr;
-        }
-      }
-      return updated;
-    });
-    setLastUpdated(new Date().toLocaleTimeString());
-  }
-
-  const handleRefresh = useCallback(() => {
-    fetchAllData();
-  }, [fetchAllData]);
-
-  function forceFreshConnection() {
-    localStorage.removeItem("topCoins");
-    localStorage.removeItem("topCoinsTime");
-    setApiCoolingDown(false);
-    lastFetchAttemptRef.current = 0;
-    fetchAllData().then(() => {
-      connectCoincapWS();
-    });
-  }
-
+  // ------------------ On Mount ------------------
   useEffect(() => {
-    fetchAllData().then(() => {
-      connectCoincapWS();
+    // 1) Fetch historical + current data
+    initializeDashboard().then((success) => {
+      // 2) Only connect WS for live updates if we have historical data
+      if (success) {
+        console.log(
+          "Historical data loaded successfully. Connecting WebSocket..."
+        );
+        connectWebSocket();
+      } else {
+        console.error(
+          "Failed to load historical data. Not connecting WebSocket."
+        );
+      }
     });
+
+    // Cleanup on unmount
     return () => {
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      if (scheduledUpdateRef.current) clearTimeout(scheduledUpdateRef.current);
       if (wsRef.current) {
-        try {
-          wsRef.current.onclose = null;
-          wsRef.current.close();
-        } catch {}
+        wsRef.current.close();
         wsRef.current = null;
       }
+      if (batchTimerRef.current) {
+        clearTimeout(batchTimerRef.current);
+      }
     };
-  }, [fetchAllData]);
+  }, [initializeDashboard, connectWebSocket]);
 
+  // ------------------ RENDER ------------------
   return (
     <div className="w-full max-w-7xl mx-auto p-4">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Crypto Dashboard</h1>
-          <p className="text-muted-foreground">Real-time cryptocurrency prices from CoinCap (24h data)</p>
+          <h1 className="text-3xl font-bold">CryptoCompare BTC Dashboard</h1>
+          <p className="text-muted-foreground">
+            Live BTC/USD price (via WebSocket) &amp; 24h hourly chart (REST)
+          </p>
         </div>
         <div className="flex items-center gap-4">
-          {/* WebSocket status */}
-          <div className={cn("flex items-center gap-2 text-sm", wsConnected ? "text-green-500" : "text-red-500")}>
-            <span className={cn("inline-block w-2 h-2 rounded-full", wsConnected ? "bg-green-500" : "bg-red-500")} />
-            {wsConnected ? "Connected" : "Disconnected"}
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "inline-block w-2 h-2 rounded-full",
+                wsConnected ? "bg-green-500" : "bg-red-500"
+              )}
+            />
+            <span className="text-sm">
+              {wsConnected ? "Connected" : "Disconnected"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={loading}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              {loading ? "Loading" : "Refresh"}
+            </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={forceFreshConnection}>
-            <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-            Refresh
-          </Button>
           <div className="text-sm text-muted-foreground">
             Last updated: {lastUpdated || "Never"}
           </div>
@@ -437,184 +405,71 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Error */}
+      {/* Error Display */}
       {error && (
         <Card className="mb-6 border-red-500">
           <CardContent className="p-4 text-red-500">{error}</CardContent>
         </Card>
       )}
 
-      {/* Graphs for first 5 coins */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {loading && cryptoData.length === 0 ? (
-          Array(MAX_CHARTS)
-            .fill(null)
-            .map((_, i) => (
-              <Card key={i} className="overflow-hidden">
-                <CardHeader className="p-4 animate-pulse">
-                  <div className="h-6 bg-muted rounded w-1/3 mb-2"></div>
-                  <div className="h-4 bg-muted rounded w-1/4"></div>
-                </CardHeader>
-                <CardContent className="p-0 pt-2 h-[120px] flex items-center justify-center">
-                  <div className="text-muted-foreground text-xs">Loading chart data...</div>
-                </CardContent>
-              </Card>
-            ))
-        ) : (
-          cryptoData.slice(0, MAX_CHARTS).map((coin) => {
-            const data = chartData[coin.id] || [];
-            return (
-              <Card key={coin.id} className="overflow-hidden">
-                <CardHeader className="p-4 pb-0">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <CardTitle className="text-lg">{coin.name}</CardTitle>
-                      <CardDescription className="text-sm uppercase">
-                        {coin.symbol}
-                      </CardDescription>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold">{formatCurrency(coin.price)}</div>
-                      <div
-                        className={cn(
-                          "flex items-center text-sm justify-end",
-                          coin.changePercent24h >= 0 ? "text-green-500" : "text-red-500"
-                        )}
-                      >
-                        {coin.changePercent24h >= 0 ? (
-                          <ArrowUpIcon className="h-3 w-3 mr-1" />
-                        ) : (
-                          <ArrowDownIcon className="h-3 w-3 mr-1" />
-                        )}
-                        {Math.abs(coin.changePercent24h).toFixed(2)}%
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0 pt-2 h-[120px]">
-                  {data.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={data}
-                        margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#aaa" opacity={0.2} />
-                        <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                        <YAxis
-                          domain={[
-                            (dataMin: number) => dataMin * 0.98,
-                            (dataMax: number) => dataMax * 1.02,
-                          ]}
-                          tick={{ fontSize: 10 }}
-                          tickFormatter={(val: number) => val.toFixed(2)}
-                        />
-                        <Tooltip
-                          contentStyle={{ fontSize: "0.75rem" }}
-                          formatter={(value: any) => formatCurrency(value)}
-                          labelFormatter={(label) => `Time: ${label}`}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="price"
-                          stroke="#22c55e"
-                          strokeWidth={2}
-                          dot={false}
-                          activeDot={{ r: 4 }}
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center">
-                      <p className="text-muted-foreground text-xs">No chart data</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
-      </div>
+      {/* Ticker Info */}
+      {cryptoData && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Ticker Info (BTC/USD)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div>Last Price: {formatCurrency(cryptoData.price)}</div>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Table for top 10 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Top 10 Cryptocurrencies</CardTitle>
-          <CardDescription>Using CoinCap’s 24h data & real-time WS</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="relative overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs uppercase border-b">
-                <tr>
-                  <th className="px-4 py-3">Symbol</th>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Price</th>
-                  <th className="px-4 py-3">24h %</th>
-                  <th className="px-4 py-3">Volume (24h)</th>
-                  <th className="px-4 py-3">Market Cap</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading && cryptoData.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-4 text-center">
-                      Loading...
-                    </td>
-                  </tr>
-                ) : cryptoData.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-4 text-center text-muted-foreground">
-                      No data
-                    </td>
-                  </tr>
-                ) : (
-                  cryptoData.map((coin) => {
-                    const isUp = coin.changePercent24h >= 0;
-                    const faIcon = ICON_MAP[coin.id] || ICON_MAP.default;
-                    return (
-                      <tr key={coin.id} className="border-b hover:bg-muted/30">
-                        <td className="px-4 py-3 flex items-center gap-2">
-                          <FontAwesomeIcon icon={faIcon} />
-                          <span className="font-medium text-base">
-                            {coin.symbol.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">{coin.name}</td>
-                        <td className="px-4 py-3 font-medium">
-                          {formatCurrency(coin.price)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div
-                            className={cn(
-                              "flex items-center",
-                              isUp ? "text-green-500" : "text-red-500"
-                            )}
-                          >
-                            {isUp ? (
-                              <ArrowUpIcon className="h-3 w-3 mr-1" />
-                            ) : (
-                              <ArrowDownIcon className="h-3 w-3 mr-1" />
-                            )}
-                            {Math.abs(coin.changePercent24h).toFixed(2)}%
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">{formatLargeNumber(coin.volume24h)}</td>
-                        <td className="px-4 py-3">{formatLargeNumber(coin.marketCap)}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-        <CardFooter className="border-t p-4">
-          <p className="text-xs text-muted-foreground">
-            Data from CoinCap (cached ~15 min). 24h with 15-min intervals. Real-time feed for top 10.
-          </p>
-        </CardFooter>
-      </Card>
+      {/* Live Chart */}
+      {chartData.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Live 24h Hourly Chart</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart
+                data={chartData} // Show all data points, not just the last 24
+                margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#aaa"
+                  opacity={0.2}
+                />
+                <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+                <YAxis
+                  domain={["auto", "auto"]}
+                  tick={{ fontSize: 10 }}
+                  tickFormatter={(val: number) => val.toFixed(2)}
+                />
+                <Tooltip
+                  contentStyle={{ fontSize: "0.75rem" }}
+                  formatter={(value) => formatCurrency(value as number)}
+                  labelFormatter={(label) => `Time: ${label}`}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="close"
+                  stroke="#f7931a"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+          <CardFooter className="border-t p-4">
+            <p className="text-xs text-muted-foreground">
+              Data from Coindesk API; live updates from CryptoCompare WebSocket.
+            </p>
+          </CardFooter>
+        </Card>
+      )}
     </div>
   );
 }
