@@ -10,8 +10,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
-
 import {
   Card,
   CardContent,
@@ -23,8 +25,6 @@ import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
 import { RefreshCw, ArrowUp, ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// Table & Badge
 import {
   Table,
   TableBody,
@@ -35,16 +35,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Settings, AlertTriangle } from "lucide-react";
 
 // ================== CONFIG ENDPOINTS ==================
 const HISTORICAL_ENDPOINT =
   "https://data-api.coindesk.com/index/cc/v1/historical/hours";
-const CURRENT_PRICE_ENDPOINT =
-  "https://data-api.coindesk.com/index/cc/v1/latest/tick?market=cadli&instruments=BTC-USD&apply_mapping=true";
 const MINUTE_DATA_ENDPOINT =
   "https://data-api.coindesk.com/index/cc/v1/historical/minutes";
 const WS_ENDPOINT = "wss://data-streamer.cryptocompare.com";
+const TOP_CURRENCIES_ENDPOINT =
+  "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC,ETH,XRP,BNB,ADA,SOL,DOGE,DOT,AVAX,MATIC,LINK,SHIB&tsyms=USD";
 
+// For WebSocket multi-subscribe
 const MULTI_SUBSCRIBE_MESSAGE = {
   action: "SUBSCRIBE",
   type: "index_cc_v1_latest_tick",
@@ -66,15 +81,11 @@ const MULTI_SUBSCRIBE_MESSAGE = {
   groups: ["VALUE", "CURRENT_HOUR"],
 };
 
-const TOP_CURRENCIES_ENDPOINT =
-  "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC,ETH,XRP,BNB,ADA,SOL,DOGE,DOT,AVAX,MATIC,LINK,SHIB&tsyms=USD";
-
 const BATCH_THRESHOLD = 5;
 const BATCH_WINDOW = 2000;
 const MAX_CHART_POINTS = 1000;
 const HOUR_IN_MS = 60 * 60 * 1000;
 
-// ================== TYPES ==================
 interface HistoricalResponse {
   Data: any[];
   Err?: Record<string, any>;
@@ -111,9 +122,7 @@ interface CurrencyData {
   lastUpdated: number;
 }
 
-// ------------------ Dashboard Component ------------------
 export default function Dashboard() {
-  // -------- Existing States --------
   const [cryptoData, setCryptoData] = useState<CryptoInfo | null>(null);
   const [chartData, setChartData] = useState<KlineData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -121,6 +130,7 @@ export default function Dashboard() {
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<string>("");
 
+  // Refs
   const wsRef = useRef<WebSocket | null>(null);
   const messageCountRef = useRef<number>(0);
   const batchTimerRef = useRef<number | null>(null);
@@ -132,11 +142,7 @@ export default function Dashboard() {
     xDomain?: [number, number];
     yDomain?: [number, number];
     isZoomed: boolean;
-  }>({
-    xDomain: undefined,
-    yDomain: undefined,
-    isZoomed: false,
-  });
+  }>({ xDomain: undefined, yDomain: undefined, isZoomed: false });
 
   const [touchState, setTouchState] = useState<{
     initialDistance: number;
@@ -148,25 +154,16 @@ export default function Dashboard() {
     };
   }>({
     initialDistance: 0,
-    initialDomains: {
-      x: [0, 0],
-      y: [0, 0],
-      centerX: 0,
-      centerY: 0,
-    },
+    initialDomains: { x: [0, 0], y: [0, 0], centerX: 0, centerY: 0 },
   });
 
   const [panState, setPanState] = useState<{
     isPanning: boolean;
     lastMouseX: number;
     lastMouseY: number;
-  }>({
-    isPanning: false,
-    lastMouseX: 0,
-    lastMouseY: 0,
-  });
+  }>({ isPanning: false, lastMouseX: 0, lastMouseY: 0 });
 
-  // Minute-level data
+  // Minute data
   const [minuteData, setMinuteData] = useState<KlineData[]>([]);
   const [isLoadingMinuteData, setIsLoadingMinuteData] =
     useState<boolean>(false);
@@ -186,9 +183,9 @@ export default function Dashboard() {
   const [selectedCurrencyName, setSelectedCurrencyName] =
     useState<string>("Bitcoin");
 
-  // -------- New Feature States (Placeholders) --------
+  // --- New/Extended Feature States ---
   const [portfolioBalance, setPortfolioBalance] = useState<number>(12345.67);
-  const [portfolioProfitLoss, setPortfolioProfitLoss] = useState<number>(12.3); // 12.3% overall gain
+  const [portfolioProfitLoss, setPortfolioProfitLoss] = useState<number>(12.3); // in %
   const [openPositions, setOpenPositions] = useState([
     { symbol: "BTC", amount: 0.05 },
     { symbol: "ETH", amount: 0.8 },
@@ -197,8 +194,36 @@ export default function Dashboard() {
   const [botActive, setBotActive] = useState<boolean>(true);
   const [botStrategy, setBotStrategy] = useState<string>("Aggressive Growth");
 
-  // A few sample recent trades
+  // Sample recent trades
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
+  // Bot Roadmap / Upcoming Actions (placeholder)
+  const [botRoadmap, setBotRoadmap] = useState<any[]>([
+    {
+      id: 1,
+      date: "3/11/2025",
+      plan: "Buy 0.01 BTC if price dips below $77,000",
+    },
+    {
+      id: 2,
+      date: "3/12/2025",
+      plan: "Rebalance portfolio to maintain 60% BTC, 40% ETH ratio",
+    },
+  ]);
+
+  // News or Tips (placeholder data)
+  const [newsFeed, setNewsFeed] = useState<any[]>([
+    {
+      id: 101,
+      title: "Crypto 101: Understanding Volatility",
+      snippet: "Learn why prices rise and fall in the crypto market.",
+    },
+    {
+      id: 102,
+      title: "Trading Bot Basics",
+      snippet:
+        "An overview of how automated crypto trading strategies work under the hood.",
+    },
+  ]);
 
   // On mount, fill in some placeholder trades
   useEffect(() => {
@@ -222,9 +247,8 @@ export default function Dashboard() {
     ]);
   }, []);
 
-  // ------------------ Helpers ------------------
+  // ============== Helpers ==============
   function formatCurrency(num: number, abbreviated: boolean = false): string {
-    // Abbreviated for large numbers
     if (abbreviated && num > 1000000) {
       return new Intl.NumberFormat("en-US", {
         style: "currency",
@@ -235,7 +259,6 @@ export default function Dashboard() {
       }).format(num);
     }
 
-    // Regular price
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
@@ -251,7 +274,7 @@ export default function Dashboard() {
     });
   }
 
-  // ------------- Top Currencies -------------
+  // ============== Top Currencies ==============
   const fetchTopCurrencies = useCallback(async () => {
     try {
       setIsLoadingCurrencies(true);
@@ -268,7 +291,7 @@ export default function Dashboard() {
         const usdData = rawData[symbol].USD;
         currencies.push({
           symbol,
-          name: symbol, // or fetch the full name if you prefer
+          name: symbol,
           price: usdData.PRICE,
           volume: usdData.VOLUME24HOUR,
           marketCap: usdData.MKTCAP,
@@ -283,16 +306,13 @@ export default function Dashboard() {
         .slice(0, 10);
       setTopCurrencies(top10);
       setIsLoadingCurrencies(false);
-
-      return true;
     } catch (err: any) {
       console.error("Error fetching top currencies:", err);
       setIsLoadingCurrencies(false);
-      return false;
     }
   }, []);
 
-  // ------------- Historical & Ticker Data -------------
+  // ============== Historical & Ticker Data ==============
   const fetchHistoricalDataForCurrency = useCallback(
     async (symbol: string): Promise<KlineData[]> => {
       try {
@@ -322,7 +342,7 @@ export default function Dashboard() {
           );
         }
 
-        const sortedData = dataArray
+        return dataArray
           .map((item: any) => ({
             timestamp: item.TIMESTAMP,
             time: formatTime(item.TIMESTAMP * 1000),
@@ -333,8 +353,6 @@ export default function Dashboard() {
             volume: item.VOLUME,
           }))
           .sort((a, b) => a.timestamp - b.timestamp);
-
-        return sortedData;
       } catch (err: any) {
         console.error(`Error fetching historical data for ${symbol}:`, err);
         throw new Error(`Failed to load historical data for ${symbol}`);
@@ -348,7 +366,6 @@ export default function Dashboard() {
       try {
         const endpoint = `https://data-api.coindesk.com/index/cc/v1/latest/tick?market=cadli&instruments=${symbol}-USD&apply_mapping=true`;
         const resp = await axios.get(endpoint);
-
         if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
           throw new Error("API Error: " + JSON.stringify(resp.data.Err));
         }
@@ -357,7 +374,6 @@ export default function Dashboard() {
         if (!tickerItem || tickerItem.VALUE === undefined) {
           throw new Error(`No ${symbol}-USD tick data found`);
         }
-
         return { price: tickerItem.VALUE };
       } catch (err: any) {
         console.error(`Error fetching ticker data for ${symbol}:`, err);
@@ -367,7 +383,7 @@ export default function Dashboard() {
     []
   );
 
-  // ------------- Minute Data -------------
+  // ============== Minute Data ==============
   const fetchMinuteDataForCurrency = useCallback(
     async (
       symbol: string,
@@ -428,7 +444,7 @@ export default function Dashboard() {
     []
   );
 
-  // ------------- WS & Initialization -------------
+  // ============== WebSocket & Initialization ==============
   const processBatch = useCallback((currencySymbol: string) => {
     if (priceBufferRef.current !== null) {
       const latestPrice = priceBufferRef.current;
@@ -439,7 +455,7 @@ export default function Dashboard() {
         prev ? { ...prev, price: latestPrice } : { price: latestPrice }
       );
 
-      // Add new chart point if an hour has passed since last update
+      // Add new chart point if an hour has passed
       const hourElapsed = now - lastChartUpdateRef.current >= HOUR_IN_MS;
       if (hourElapsed) {
         lastChartUpdateRef.current = now;
@@ -457,7 +473,6 @@ export default function Dashboard() {
           if (updatedLivePoints.length > MAX_CHART_POINTS - 24) {
             updatedLivePoints.shift();
           }
-
           return [...historicalPoints, ...updatedLivePoints];
         });
       }
@@ -467,7 +482,6 @@ export default function Dashboard() {
 
     messageCountRef.current = 0;
     priceBufferRef.current = null;
-
     if (batchTimerRef.current) {
       clearTimeout(batchTimerRef.current);
       batchTimerRef.current = null;
@@ -488,10 +502,10 @@ export default function Dashboard() {
         console.log("WebSocket connected");
         setWsConnected(true);
 
-        // Subscribe to multiple top currencies
+        // Subscribe to top currencies
         ws.send(JSON.stringify(MULTI_SUBSCRIBE_MESSAGE));
 
-        // Also subscribe to the selected currency
+        // Subscribe specifically to the selected currency
         const CURRENCY_SUBSCRIBE_MESSAGE = {
           action: "SUBSCRIBE",
           type: "index_cc_v1_latest_tick",
@@ -517,7 +531,6 @@ export default function Dashboard() {
             if (currencyPair === `${symbol}-USD`) {
               priceBufferRef.current = price;
               messageCountRef.current += 1;
-
               if (messageCountRef.current >= BATCH_THRESHOLD) {
                 processBatch(symbol);
               } else if (!batchTimerRef.current) {
@@ -532,11 +545,7 @@ export default function Dashboard() {
             setTopCurrencies((prev) =>
               prev.map((curr) =>
                 curr.symbol === msgSymbol
-                  ? {
-                      ...curr,
-                      price: price,
-                      lastUpdated: Date.now(),
-                    }
+                  ? { ...curr, price: price, lastUpdated: Date.now() }
                   : curr
               )
             );
@@ -569,7 +578,7 @@ export default function Dashboard() {
         const historical = await fetchHistoricalDataForCurrency(symbol);
         setChartData(historical);
 
-        // Current ticker
+        // Ticker
         const ticker = await fetchTickerDataForCurrency(symbol);
         setCryptoData(ticker);
 
@@ -577,12 +586,10 @@ export default function Dashboard() {
         setLoading(false);
 
         connectWebSocketForCurrency(symbol);
-        return true;
       } catch (err: any) {
         console.error(`Error initializing for ${symbol}:`, err);
         setError(err?.message || `Failed to load data for ${symbol}`);
         setLoading(false);
-        return false;
       }
     },
     [
@@ -608,31 +615,22 @@ export default function Dashboard() {
     };
   }, [fetchTopCurrencies, initializeDashboardForCurrency]);
 
-  // ------------- Chart & Zoom handlers -------------
+  // ============== Handlers ==============
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
   const handleResetZoom = useCallback(() => {
-    setZoomState({
-      xDomain: undefined,
-      yDomain: undefined,
-      isZoomed: false,
-    });
+    setZoomState({ xDomain: undefined, yDomain: undefined, isZoomed: false });
     setMinuteData([]);
     setMinuteDataRange(null);
   }, []);
 
   const handleCurrencySelect = useCallback(
     (symbol: string) => {
-      // Close existing WS
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
-      setZoomState({
-        xDomain: undefined,
-        yDomain: undefined,
-        isZoomed: false,
-      });
+      setZoomState({ xDomain: undefined, yDomain: undefined, isZoomed: false });
       setChartData([]);
       setMinuteData([]);
       setSelectedCurrency(symbol);
@@ -646,7 +644,6 @@ export default function Dashboard() {
     [topCurrencies, initializeDashboardForCurrency]
   );
 
-  // On-demand refresh
   const handleRefresh = useCallback(async () => {
     try {
       setLoading(true);
@@ -661,23 +658,19 @@ export default function Dashboard() {
     }
   }, [fetchTickerDataForCurrency, selectedCurrency]);
 
-  // Mouse & touch events for zoom/pan...
-  // (All your existing handleWheel, handleTouchStart, handleTouchMove, etc. remain below)
-
+  // ===== Zoom/Pan via Mouse & Touch (omitted some repeated commentary) =====
   const handleTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
-      // For pinch-to-zoom (2 fingers)
       if (event.touches.length === 2) {
-        const touch1 = event.touches[0];
-        const touch2 = event.touches[1];
+        const t1 = event.touches[0];
+        const t2 = event.touches[1];
         const distance = Math.hypot(
-          touch2.clientX - touch1.clientX,
-          touch2.clientY - touch1.clientY
+          t2.clientX - t1.clientX,
+          t2.clientY - t1.clientY
         );
-
         const chartRect = event.currentTarget.getBoundingClientRect();
-        const centerX = (touch1.clientX + touch2.clientX) / 2;
-        const centerY = (touch1.clientY + touch2.clientY) / 2;
+        const centerX = (t1.clientX + t2.clientX) / 2;
+        const centerY = (t1.clientY + t2.clientY) / 2;
         const xPercent = (centerX - chartRect.left) / chartRect.width;
         const yPercent = (centerY - chartRect.top) / chartRect.height;
 
@@ -707,13 +700,13 @@ export default function Dashboard() {
 
   const handleTouchMove = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
-      // For pinch-to-zoom
+      // Pinch
       if (event.touches.length === 2) {
-        const touch1 = event.touches[0];
-        const touch2 = event.touches[1];
+        const t1 = event.touches[0];
+        const t2 = event.touches[1];
         const distance = Math.hypot(
-          touch2.clientX - touch1.clientX,
-          touch2.clientY - touch1.clientY
+          t2.clientX - t1.clientX,
+          t2.clientY - t1.clientY
         );
         const zoomFactor = touchState.initialDistance / distance;
 
@@ -729,13 +722,14 @@ export default function Dashboard() {
           touchState.initialDomains.x[1] +
             xRange * (1 - zoomFactor) * (1 - xPercent),
         ];
+
         const newYDomain: [number, number] = [
           touchState.initialDomains.y[0] -
             yRange * (1 - zoomFactor) * (1 - yPercent),
           touchState.initialDomains.y[1] + yRange * (1 - zoomFactor) * yPercent,
         ];
 
-        // Basic limit for zooming out
+        // Basic limit for zoom out
         if (zoomFactor > 1) {
           const fullXDomain = [0, chartData.length - 1];
           const fullYDomain = [
@@ -758,7 +752,7 @@ export default function Dashboard() {
           isZoomed: true,
         });
       }
-      // For panning
+      // Pan
       else if (
         event.touches.length === 1 &&
         panState.isPanning &&
@@ -806,7 +800,6 @@ export default function Dashboard() {
           yDomain: newYDomain,
           isZoomed: true,
         });
-
         setPanState({
           isPanning: true,
           lastMouseX: touch.clientX,
@@ -866,7 +859,6 @@ export default function Dashboard() {
         currentYDomain[1] + yShift,
       ];
 
-      // Bound checks
       const fullXDomain = [0, chartData.length - 1];
       if (newXDomain[0] < fullXDomain[0]) {
         const overflow = fullXDomain[0] - newXDomain[0];
@@ -882,7 +874,6 @@ export default function Dashboard() {
         yDomain: newYDomain,
         isZoomed: true,
       });
-
       setPanState({
         isPanning: true,
         lastMouseX: event.clientX,
@@ -895,7 +886,6 @@ export default function Dashboard() {
   const handleMouseUp = useCallback(() => {
     setPanState((prev) => ({ ...prev, isPanning: false }));
   }, []);
-
   const handleMouseLeave = useCallback(() => {
     setPanState((prev) => ({ ...prev, isPanning: false }));
   }, []);
@@ -911,7 +901,23 @@ export default function Dashboard() {
     };
   }, [panState.isPanning]);
 
-  // ------------- Render -------------
+  // ====== A small Pie Chart to show distribution (Portfolio Distribution) ======
+  const portfolioDistributionData = openPositions.map((pos) => ({
+    name: pos.symbol,
+    value: pos.amount,
+  }));
+
+  const COLORS = ["#f7931a", "#627eea", "#ed4b2a", "#f4c430", "#fee440"];
+
+  // Add these new state variables with the other bot-related states:
+  const [botRiskLevel, setBotRiskLevel] = useState<number>(50);
+  const [botTradesPerDay, setBotTradesPerDay] = useState<number>(8);
+  const [botSuccessRate, setBotSuccessRate] = useState<number>(67);
+  const [botAutoRebalance, setBotAutoRebalance] = useState<boolean>(true);
+  const [botDCAEnabled, setBotDCAEnabled] = useState<boolean>(true);
+  const [botShowAdvanced, setBotShowAdvanced] = useState<boolean>(false);
+
+  // ============== Render ==============
   return (
     <div className="w-full max-w-7xl mx-auto p-2 sm:p-4">
       {/* Header */}
@@ -957,10 +963,10 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Row 1: Portfolio Overview & Bot Status */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      {/* Row 1: Portfolio & Bot */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
         {/* Portfolio Overview */}
-        <Card>
+        <Card className="lg:col-span-1">
           <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
             <CardTitle className="text-base sm:text-lg">
               Portfolio Overview
@@ -997,72 +1003,281 @@ export default function Dashboard() {
         </Card>
 
         {/* Bot Status & Strategy */}
-        <Card>
+        <Card className="lg:col-span-1">
           <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-            <CardTitle className="text-base sm:text-lg">
-              Bot Status & Strategy
-            </CardTitle>
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-base sm:text-lg">
+                Bot Status & Strategy
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setBotShowAdvanced((prev) => !prev)}
+                className="h-8 w-8 p-0"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-3 sm:p-4">
-            <p className="text-sm sm:text-base mb-2">
-              <strong>Status:</strong>{" "}
-              <span className={botActive ? "text-green-600" : "text-red-600"}>
-                {botActive ? "Active" : "Paused"}
-              </span>
-            </p>
-            <p className="text-sm sm:text-base mb-2">
-              <strong>Strategy:</strong> {botStrategy}
-            </p>
-            <Button
-              variant={botActive ? "destructive" : "outline"}
-              size="sm"
-              onClick={() => setBotActive((prev) => !prev)}
-            >
-              {botActive ? "Pause Bot" : "Activate Bot"}
-            </Button>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={cn(
+                      "h-3 w-3 rounded-full",
+                      botActive ? "bg-green-500" : "bg-red-500"
+                    )}
+                  />
+                  <p className="text-sm font-medium">
+                    Status:{" "}
+                    <span
+                      className={botActive ? "text-green-600" : "text-red-600"}
+                    >
+                      {botActive ? "Active" : "Paused"}
+                    </span>
+                  </p>
+                </div>
+                <Switch checked={botActive} onCheckedChange={setBotActive} />
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="strategy-select"
+                  className="text-sm font-medium"
+                >
+                  Strategy
+                </Label>
+                <Select
+                  value={botStrategy}
+                  onValueChange={(value) => setBotStrategy(value)}
+                >
+                  <SelectTrigger id="strategy-select" className="mt-1 w-full">
+                    <SelectValue placeholder="Select strategy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="Aggressive Growth">
+                        Aggressive Growth
+                      </SelectItem>
+                      <SelectItem value="Conservative">Conservative</SelectItem>
+                      <SelectItem value="Balanced">Balanced</SelectItem>
+                      <SelectItem value="DCA">Dollar-Cost Averaging</SelectItem>
+                      <SelectItem value="Trend Following">
+                        Trend Following
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Bot performance metrics */}
+              <div className="pt-2">
+                <p className="text-sm font-medium mb-2">Bot Performance</p>
+                <div className="space-y-2">
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span>Success Rate</span>
+                      <span className="font-medium">{botSuccessRate}%</span>
+                    </div>
+                    <Progress value={botSuccessRate} className="h-1.5" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span>Avg. Trades/Day</span>
+                      <span className="font-medium">{botTradesPerDay}</span>
+                    </div>
+                    <Progress value={botTradesPerDay * 5} className="h-1.5" />
+                  </div>
+                </div>
+              </div>
+
+              {botShowAdvanced && (
+                <div className="pt-2 border-t">
+                  <p className="text-sm font-medium mb-2">Advanced Settings</p>
+
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <Label htmlFor="risk-level" className="text-xs">
+                          Risk Level
+                        </Label>
+                        <span className="text-xs font-medium">
+                          {botRiskLevel}%
+                        </span>
+                      </div>
+                      <Slider
+                        id="risk-level"
+                        min={10}
+                        max={90}
+                        step={10}
+                        value={[botRiskLevel]}
+                        onValueChange={(value) => setBotRiskLevel(value[0])}
+                      />
+                      {botRiskLevel > 70 && (
+                        <div className="flex items-center mt-1 text-amber-600 text-[10px] gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>
+                            High risk settings may lead to increased volatility
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="auto-rebalance" className="text-xs">
+                          Auto-Rebalance
+                        </Label>
+                        <span className="text-[10px] text-muted-foreground">
+                          Maintains target allocation
+                        </span>
+                      </div>
+                      <Switch
+                        id="auto-rebalance"
+                        checked={botAutoRebalance}
+                        onCheckedChange={setBotAutoRebalance}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="dca-enabled" className="text-xs">
+                          DCA Enabled
+                        </Label>
+                        <span className="text-[10px] text-muted-foreground">
+                          Dollar-cost averaging
+                        </span>
+                      </div>
+                      <Switch
+                        id="dca-enabled"
+                        checked={botDCAEnabled}
+                        onCheckedChange={setBotDCAEnabled}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-3">
+                <Button
+                  variant={botActive ? "destructive" : "default"}
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setBotActive((prev) => !prev)}
+                >
+                  {botActive ? "Pause Bot" : "Activate Bot"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Portfolio Distribution (Pie Chart) */}
+        <Card className="lg:col-span-1">
+          <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+            <CardTitle className="text-base sm:text-lg">
+              Portfolio Distribution
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-4 flex justify-center">
+            <div style={{ width: 200, height: 200 }}>
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie
+                    data={portfolioDistributionData}
+                    dataKey="value"
+                    nameKey="name"
+                    outerRadius={80}
+                    label={(entry) => entry.name}
+                  >
+                    {portfolioDistributionData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={COLORS[index % COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number, name: string) => [
+                      `${value} ${name}`,
+                      "Holdings",
+                    ]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Row 2: Chart & Top Cryptocurrencies */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-        {/* Chart side (2/3 width) */}
-        <div className="md:col-span-2">
-          {/* Ticker Info */}
-          {cryptoData && (
-            <Card className="mb-3 sm:mb-4">
-              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-                <CardTitle className="text-base sm:text-lg">
-                  Ticker Info ({selectedCurrency}/USD)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3 sm:p-4 pt-2 sm:pt-3 text-sm sm:text-base">
-                <div>Last Price: {formatCurrency(cryptoData.price)}</div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Main Chart */}
+      {/* Row 2: Ticker/Chart & Top Crypto */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+        {/* Main chart side (2/3) */}
+        <div className="lg:col-span-2">
+          {/* Chart with integrated ticker info */}
           {chartData.length > 0 && (
             <Card className="mb-3 sm:mb-4">
               <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-base sm:text-lg">
-                    {selectedCurrency}/USD 24h Chart
-                  </CardTitle>
-                  {zoomState.isZoomed && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleResetZoom}
-                      className="text-xs"
-                    >
-                      Reset Zoom
-                    </Button>
-                  )}
+                <div className="flex flex-col sm:flex-row justify-between gap-2 w-full">
+                  <div className="flex flex-col gap-1">
+                    <CardTitle className="text-base sm:text-lg">
+                      {selectedCurrency}/USD Chart
+                    </CardTitle>
+                    {cryptoData && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm sm:text-base font-semibold">
+                          {formatCurrency(cryptoData.price)}
+                        </span>
+                        {/* Add 24h change if available */}
+                        {topCurrencies.find(
+                          (c) => c.symbol === selectedCurrency
+                        )?.change24h !== undefined && (
+                          <span
+                            className={cn(
+                              "text-xs rounded-md px-1.5 py-0.5 font-medium",
+                              topCurrencies.find(
+                                (c) => c.symbol === selectedCurrency
+                              )?.change24h || 0 >= 0
+                                ? "bg-green-500/10 text-green-600"
+                                : "bg-red-500/10 text-red-600"
+                            )}
+                          >
+                            {(topCurrencies.find(
+                              (c) => c.symbol === selectedCurrency
+                            )?.change24h || 0) >= 0
+                              ? "+"
+                              : ""}
+                            {(
+                              topCurrencies.find(
+                                (c) => c.symbol === selectedCurrency
+                              )?.change24h || 0
+                            ).toFixed(2)}
+                            %
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-muted-foreground">
+                      Last updated: {lastUpdated || "Never"}
+                    </span>
+                    {zoomState.isZoomed && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleResetZoom}
+                        className="text-xs"
+                      >
+                        Reset Zoom
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-2 sm:p-4">
+                {/* Chart container div stays the same */}
                 <div
                   ref={chartContainerRef}
                   onMouseDown={handleMouseDown}
@@ -1118,16 +1333,135 @@ export default function Dashboard() {
                         dataKey="close"
                         stroke="#f7931a"
                         strokeWidth={2}
-                        dot={zoomState.isZoomed && minuteData.length > 0}
+                        dot={false}
                         activeDot={{ r: 6 }}
                         isAnimationActive={false}
                       />
+                      {/* Enhanced Tooltip */}
                       <Tooltip
-                        formatter={(value: number) => [
-                          formatCurrency(value),
-                          `${selectedCurrency}/USD`,
-                        ]}
-                        labelFormatter={(label) => `Time: ${label}`}
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+
+                            // Format the date for better display
+                            const timestamp = data.timestamp * 1000;
+                            const date = new Date(timestamp);
+                            const formattedDate = date.toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              }
+                            );
+                            const formattedTime = date.toLocaleTimeString(
+                              "en-US",
+                              {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              }
+                            );
+
+                            // Calculate price change if previous point data is available
+                            let priceChangePercent = null;
+                            const currentChartData =
+                              zoomState.isZoomed && minuteData.length > 0
+                                ? minuteData
+                                : chartData;
+
+                            const dataIndex = currentChartData.findIndex(
+                              (item) => item.timestamp === data.timestamp
+                            );
+
+                            if (
+                              dataIndex > 0 &&
+                              currentChartData[dataIndex - 1]
+                            ) {
+                              const prevClose =
+                                currentChartData[dataIndex - 1].close;
+                              const currentClose = data.close;
+                              priceChangePercent =
+                                ((currentClose - prevClose) / prevClose) * 100;
+                            }
+
+                            return (
+                              <div className="bg-background/95 backdrop-blur-sm border rounded shadow-lg p-3 text-xs">
+                                <div className="font-bold mb-1 text-sm">
+                                  {selectedCurrency}/USD
+                                </div>
+                                <div className="text-muted-foreground mb-2">
+                                  {formattedDate} at {formattedTime}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                  <div>Price:</div>
+                                  <div className="text-right font-medium">
+                                    {formatCurrency(data.close)}
+                                  </div>
+
+                                  {data.open !== undefined && (
+                                    <>
+                                      <div>Open:</div>
+                                      <div className="text-right">
+                                        {formatCurrency(data.open)}
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {data.high !== undefined && (
+                                    <>
+                                      <div>High:</div>
+                                      <div className="text-right">
+                                        {formatCurrency(data.high)}
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {data.low !== undefined && (
+                                    <>
+                                      <div>Low:</div>
+                                      <div className="text-right">
+                                        {formatCurrency(data.low)}
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {priceChangePercent !== null && (
+                                    <>
+                                      <div>Change:</div>
+                                      <div
+                                        className={`text-right ${
+                                          priceChangePercent >= 0
+                                            ? "text-green-600"
+                                            : "text-red-600"
+                                        }`}
+                                      >
+                                        {priceChangePercent >= 0 ? "+" : ""}
+                                        {priceChangePercent.toFixed(2)}%
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {data.volume !== undefined && (
+                                    <>
+                                      <div>Volume:</div>
+                                      <div className="text-right">
+                                        {formatCurrency(data.volume, true)}
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {data.isMinuteData && (
+                                    <div className="col-span-2 mt-1 text-[10px] text-muted-foreground">
+                                      Minute resolution data
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
                       />
                       {isLoadingMinuteData && (
                         <text
@@ -1154,10 +1488,10 @@ export default function Dashboard() {
                   </p>
                   <p className="text-[10px] sm:text-xs text-muted-foreground">
                     <span className="hidden sm:inline">
-                      Tip: Use your mouse wheel to zoom in and out.{" "}
+                      Use your mouse wheel to zoom in and out.{" "}
                     </span>
-                    <span className="sm:hidden">Tip: Pinch to zoom. </span>
-                    Tap the Reset Zoom button to return to full view.
+                    <span className="sm:hidden">Pinch to zoom. </span>
+                    Click and drag to pan when zoomed in.
                   </p>
                 </div>
               </CardFooter>
@@ -1165,8 +1499,8 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Top Currencies (1/3 width) */}
-        <div className="md:col-span-1">
+        {/* Top Cryptocurrencies */}
+        <div className="lg:col-span-1">
           <Card className="h-full">
             <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
               <CardTitle className="text-base sm:text-lg">
@@ -1248,105 +1582,189 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Row 3: Quick Trade & Recent Trades */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-        {/* Quick Trade Card */}
-        <Card>
-          <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-            <CardTitle className="text-base sm:text-lg">Quick Trade</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 sm:p-4">
-            <p className="text-sm mb-2">
-              For simplicity, a novice can instantly buy/sell the currently
-              selected currency.
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="default"
-                onClick={() =>
-                  alert(`(Placeholder) Buying 0.01 ${selectedCurrency}`)
-                }
-              >
-                Buy 0.01 {selectedCurrency}
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() =>
-                  alert(`(Placeholder) Selling 0.01 ${selectedCurrency}`)
-                }
-              >
-                Sell 0.01 {selectedCurrency}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Row 3: Quick Trade, Recent Trades, Bot Roadmap, News/Tips */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-4">
+        {/* LEFT COLUMN: Quick Trade + Roadmap */}
+        <div className="flex flex-col gap-4">
+          {/* Quick Trade Card */}
+          <Card>
+            <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardTitle className="text-base sm:text-lg">
+                Quick Trade
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 sm:p-4">
+              <p className="text-sm mb-2">
+                For simplicity, a novice can instantly buy/sell the currently
+                selected currency.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="default"
+                  onClick={() =>
+                    alert(`(Placeholder) Buying 0.01 ${selectedCurrency}`)
+                  }
+                >
+                  Buy 0.01 {selectedCurrency}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() =>
+                    alert(`(Placeholder) Selling 0.01 ${selectedCurrency}`)
+                  }
+                >
+                  Sell 0.01 {selectedCurrency}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* Recent Trades / Activity Feed */}
-        <Card>
-          <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-            <CardTitle className="text-base sm:text-lg">
-              Recent Trades
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-auto max-h-[200px] sm:max-h-[250px]">
-              <Table className="w-full">
-                <TableCaption className="text-[10px] sm:text-xs">
-                  Latest activity by the bot
-                </TableCaption>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Type</TableHead>
-                    <TableHead className="text-xs">Symbol</TableHead>
-                    <TableHead className="text-right text-xs">Amount</TableHead>
-                    <TableHead className="text-right text-xs">Price</TableHead>
-                    <TableHead className="text-right text-xs">Time</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentTrades.length === 0 ? (
+          {/* Bot Roadmap / Upcoming Actions */}
+          <Card>
+            <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardTitle className="text-base sm:text-lg">
+                Bot Roadmap
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto max-h-[200px] sm:max-h-[250px]">
+                <Table className="w-full">
+                  <TableCaption className="text-[10px] sm:text-xs">
+                    Next planned moves
+                  </TableCaption>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="text-center text-xs py-2"
-                      >
-                        No recent trades
-                      </TableCell>
+                      <TableHead className="text-xs">Date</TableHead>
+                      <TableHead className="text-xs">Plan</TableHead>
                     </TableRow>
-                  ) : (
-                    recentTrades.map((trade) => (
-                      <TableRow key={trade.id}>
-                        <TableCell className="text-xs py-2">
-                          <span
-                            className={
-                              trade.type === "BUY"
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }
-                          >
-                            {trade.type}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-xs py-2">
-                          {trade.symbol}
-                        </TableCell>
-                        <TableCell className="text-right text-xs py-2">
-                          {trade.amount}
-                        </TableCell>
-                        <TableCell className="text-right text-xs py-2">
-                          {formatCurrency(trade.price)}
-                        </TableCell>
-                        <TableCell className="text-right text-xs py-2">
-                          {trade.timestamp}
+                  </TableHeader>
+                  <TableBody>
+                    {botRoadmap.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={2}
+                          className="text-center text-xs py-2"
+                        >
+                          No upcoming actions
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                    ) : (
+                      botRoadmap.map((action) => (
+                        <TableRow key={action.id}>
+                          <TableCell className="text-xs py-2">
+                            {action.date}
+                          </TableCell>
+                          <TableCell className="text-xs py-2">
+                            {action.plan}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* RIGHT COLUMN: Recent Trades + News/Tips */}
+        <div className="flex flex-col gap-4">
+          {/* Recent Trades */}
+          <Card>
+            <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardTitle className="text-base sm:text-lg">
+                Recent Trades
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto max-h-[200px] sm:max-h-[250px]">
+                <Table className="w-full">
+                  <TableCaption className="text-[10px] sm:text-xs">
+                    Latest activity by the bot
+                  </TableCaption>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Type</TableHead>
+                      <TableHead className="text-xs">Symbol</TableHead>
+                      <TableHead className="text-right text-xs">
+                        Amount
+                      </TableHead>
+                      <TableHead className="text-right text-xs">
+                        Price
+                      </TableHead>
+                      <TableHead className="text-right text-xs">Time</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recentTrades.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="text-center text-xs py-2"
+                        >
+                          No recent trades
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      recentTrades.map((trade) => (
+                        <TableRow key={trade.id}>
+                          <TableCell className="text-xs py-2">
+                            <span
+                              className={
+                                trade.type === "BUY"
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                              }
+                            >
+                              {trade.type}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs py-2">
+                            {trade.symbol}
+                          </TableCell>
+                          <TableCell className="text-right text-xs py-2">
+                            {trade.amount}
+                          </TableCell>
+                          <TableCell className="text-right text-xs py-2">
+                            {formatCurrency(trade.price)}
+                          </TableCell>
+                          <TableCell className="text-right text-xs py-2">
+                            {trade.timestamp}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* News / Educational Tips */}
+          <Card>
+            <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardTitle className="text-base sm:text-lg">
+                News & Tips
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 sm:p-4">
+              {newsFeed.length === 0 ? (
+                <p className="text-xs">No news items available</p>
+              ) : (
+                <ul className="list-none text-sm space-y-3">
+                  {newsFeed.map((item) => (
+                    <li key={item.id}>
+                      <p className="font-semibold mb-1">{item.title}</p>
+                      <p className="text-muted-foreground text-xs">
+                        {item.snippet}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Footer / Disclaimer */}
