@@ -1,8 +1,8 @@
 // server/index.js
 const dotenv = require("dotenv");
 
-// Load environment variables from .env or .env.test based on NODE_ENV
-const envFile = process.env.NODE_ENV;
+// Load environment variables from proper .env file
+const envFile = process.env.NODE_ENV === 'production' ? '.env' : '.env.development';
 dotenv.config({ path: envFile });
 
 const express = require("express");
@@ -39,13 +39,31 @@ if (NODE_ENV === "development") {
 }
 console.log("CORS address set to:", address);
 console.log("address", address);
-// Middleware
-app.use(
-  cors({
-    origin: address, // Replace with your frontend URL
-    credentials: true, // Allow cookies to be sent
-  })
-);
+
+// Enhanced CORS configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = [address];
+    // For development, allow requests with no origin (like mobile apps or curl requests)
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+// Apply CORS middleware before all routes
+app.use(cors(corsOptions));
+
+// Handle OPTIONS requests explicitly
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 app.use(cookieParser());
 app.use(helmet()); // Adds security-related HTTP headers
@@ -90,9 +108,9 @@ mongoose
   });
 
 // Import Routes
-const authRoutes = require("./routes/auth");
-const dashboardRoutes = require("./routes/dashboard");
-const tradesRoutes = require("./routes/trades");
+const authRoutes = require("../Server/routes/auth");
+const dashboardRoutes = require("../Server/routes/dashboard");
+const tradesRoutes = require("../Server/routes/trades");
 
 // Use Routes
 app.use("/api/auth", authRoutes);
@@ -114,8 +132,16 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
+// Add 404 route handler
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found"
+  });
+});
+
 // Error Handling Middleware (Must be after all other routes)
-const errorHandler = require("./middleware/errorHandler");
+const errorHandler = require("../Server/middleware/errorHandler");
 app.use(errorHandler);
 
 // Start the Server

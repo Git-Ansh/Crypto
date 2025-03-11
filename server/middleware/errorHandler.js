@@ -1,5 +1,5 @@
 // server/middleware/errorHandler.js
-const CustomError = require("../utils/CustomError");
+const CustomError = require("../Server/utils/CustomError");
 
 /**
  * Centralized error handling middleware.
@@ -8,8 +8,9 @@ const CustomError = require("../utils/CustomError");
  * @param {Object} res - Express response object.
  * @param {Function} next - Express next middleware function.
  */
-// errorHandler.js
 const errorHandler = (err, req, res, next) => {
+  console.error("Error:", err);
+  
   if (err instanceof CustomError) {
     return res.status(err.statusCode).json({
       success: false,
@@ -23,4 +24,5 @@ const errorHandler = (err, req, res, next) => {
     message: "Server Error",
   });
 };
+
 module.exports = errorHandler;
