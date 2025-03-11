@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { config } from "@/lib/config";
 
 interface User {
   id: string;
@@ -67,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const apiUrl = config.api.baseUrl;
       const response = await fetch(`${apiUrl}/api/auth/verify`, {
         credentials: "include",
       });
@@ -91,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       setUserState(null);
 
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const apiUrl = config.api.baseUrl;
       const response = await fetch(`${apiUrl}/api/auth/logout`, {
         method: "POST",
         credentials: "include",

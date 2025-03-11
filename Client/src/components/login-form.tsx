@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"; // Remove config from this import
+import { config } from "@/lib/config"; // Add this separate import
 import { Button } from "@/components/ui/button";
 import {
   useNavigate as useReactRouterNavigate,
   useLocation,
-  NavigateFunction,
 } from "react-router-dom";
 import {
   Card,
@@ -159,17 +159,8 @@ export function LoginForm({
         // Now that we have Firebase auth, send the token to our backend
         const idToken = await result.user.getIdToken();
 
-        // Make sure we're using the correct API URL - no undefined in path
-        const apiUrl = "http://localhost:5000"; // Or your actual backend URL
-        const response = await fetch(`${apiUrl}/api/auth/google-verify`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ idToken }),
-        });
-
-        const backendResult = await response.json();
+        // Use the API utility which uses the correct environment URL
+        const backendResult = await verifyGoogleAuth(idToken);
 
         if (backendResult.success) {
           toast("Login successful");
