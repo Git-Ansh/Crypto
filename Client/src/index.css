@@ -69,6 +69,8 @@ a:hover {
   color: #535bf2;
 }
 
+
+
 .recharts-curve {
   transition: stroke-dashoffset 1.5s ease-out;
 }
@@ -79,7 +81,11 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
+  
 }
+
+
 
 h1 {
   font-size: 3.2em;
@@ -129,8 +135,18 @@ h1 {
 
 @import "tailwindcss";
 
+.no-scrollbar {
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE 10+ */
+}
 
-
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  /* Chrome, Safari, Opera */
+}
 button {
   border-radius: 8px;
   border: 1px solid transparent;

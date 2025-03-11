@@ -1,7 +1,7 @@
-import { ThemeProvider } from "@/components/theme-provider"
-import { type ReactNode } from "react"
-import { LoginForm } from "@/components/login-form"
-import Dashboard  from "@/components/dashboard"
+import { ThemeProvider } from "@/components/theme-provider";
+import { type ReactNode } from "react";
+// import { LoginForm } from "@/components/login-form"
+import Dashboard from "@/components/dashboard";
 
 function App({ children }: { children?: ReactNode }) {
   return (
@@ -12,7 +12,7 @@ function App({ children }: { children?: ReactNode }) {
       </div>
       {children}
     </ThemeProvider>
-  )
+  );
 }
 
-export default App
+export default App;
