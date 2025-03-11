@@ -5,6 +5,10 @@
   text-align: center;
 }
 
+.recharts-curve {
+  transition: stroke-dashoffset 1.5s ease-out;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;

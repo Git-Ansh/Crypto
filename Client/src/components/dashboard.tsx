@@ -1,5 +1,6 @@
 "use client";
-
+// Add these new imports at the top of the file with the other recharts imports
+import { AreaChart, Area } from "recharts";
 import { useState, useEffect, useRef, useCallback, TouchEvent } from "react";
 import axios from "axios";
 import {
@@ -130,6 +131,11 @@ export default function Dashboard() {
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<string>("");
 
+  const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
+  const [portfolioDateRange, setPortfolioDateRange] = useState<string>("24h");
+  const [portfolioChartLoading, setPortfolioChartLoading] =
+    useState<boolean>(false);
+
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
   const messageCountRef = useRef<number>(0);
@@ -247,6 +253,10 @@ export default function Dashboard() {
     ]);
   }, []);
 
+  // 1. First, add a new state for news data
+  const [newsItems, setNewsItems] = useState<any[]>([]);
+  const [loadingNews, setLoadingNews] = useState<boolean>(true);
+
   // ============== Helpers ==============
   function formatCurrency(num: number, abbreviated: boolean = false): string {
     if (abbreviated && num > 1000000) {
@@ -275,6 +285,7 @@ export default function Dashboard() {
   }
 
   // ============== Top Currencies ==============
+  // 3. Fix the fetchTopCurrencies function to correctly handle market cap
   const fetchTopCurrencies = useCallback(async () => {
     try {
       setIsLoadingCurrencies(true);
@@ -284,26 +295,40 @@ export default function Dashboard() {
         throw new Error("Invalid data format from cryptocompare API");
       }
 
+      // Debug to see what's coming back
+      console.log(
+        "CryptoCompare sample data:",
+        Object.keys(resp.data.RAW)[0],
+        resp.data.RAW[Object.keys(resp.data.RAW)[0]].USD
+      );
+
       const rawData = resp.data.RAW;
       const currencies: CurrencyData[] = [];
 
       Object.keys(rawData).forEach((symbol) => {
         const usdData = rawData[symbol].USD;
+
+        // Fix market cap value - make sure it's accessing the right property
+        const marketCap =
+          usdData.MKTCAP || usdData.MARKET_CAP || usdData.TOTALVOLUME24HTO || 0;
+
         currencies.push({
           symbol,
-          name: symbol, // We could fetch full names if needed
-          price: usdData.PRICE,
-          volume: usdData.VOLUME24HOUR,
-          marketCap: usdData.MKTCAP,
-          change24h: usdData.CHANGEPCT24HOUR,
+          name: symbol,
+          price: usdData.PRICE || 0,
+          volume: usdData.VOLUME24HOUR || 0,
+          marketCap: marketCap,
+          change24h: usdData.CHANGEPCT24HOUR || 0,
           lastUpdated: Date.now(),
         });
       });
 
       // Sort by market cap and take top 10
       const top10 = currencies
+        .filter((c) => c.marketCap > 0) // Filter out any with 0 market cap
         .sort((a, b) => b.marketCap - a.marketCap)
         .slice(0, 10);
+
       setTopCurrencies(top10);
       setIsLoadingCurrencies(false);
 
@@ -601,10 +626,51 @@ export default function Dashboard() {
     ]
   );
 
+  // 2. Add a function to fetch news from CryptoCompare
+  const fetchLatestNews = useCallback(async () => {
+    try {
+      setLoadingNews(true);
+      const resp = await axios.get(
+        "https://min-api.cryptocompare.com/data/v2/news/?lang=EN&categories=BTC,ETH,Regulation,Mining&excludeCategories=Sponsored&items=5"
+      );
+
+      if (!resp.data || !resp.data.Data) {
+        throw new Error("Invalid news data format from API");
+      }
+
+      // Transform news articles
+      const newsData = resp.data.Data.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        url: item.url,
+        source: item.source,
+        imageUrl: item.imageurl,
+        categories: item.categories,
+        snippet:
+          item.body.length > 120
+            ? item.body.substring(0, 120) + "..."
+            : item.body,
+        publishedAt: new Date(item.published_on * 1000).toLocaleString(),
+      }));
+
+      setNewsItems(newsData);
+      setLoadingNews(false);
+      return true;
+    } catch (err: any) {
+      console.error("Error fetching news:", err);
+      setLoadingNews(false);
+      return false;
+    }
+  }, []);
+
+  // 4. Update the initialization use effect to also fetch news
   useEffect(() => {
     fetchTopCurrencies().then(() => {
       initializeDashboardForCurrency("BTC");
     });
+
+    // Add this line to fetch news articles
+    fetchLatestNews();
 
     return () => {
       if (wsRef.current) {
@@ -615,7 +681,7 @@ export default function Dashboard() {
         clearTimeout(batchTimerRef.current);
       }
     };
-  }, [fetchTopCurrencies, initializeDashboardForCurrency]);
+  }, [fetchTopCurrencies, initializeDashboardForCurrency, fetchLatestNews]);
 
   // ============== Handlers ==============
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -919,14 +985,103 @@ export default function Dashboard() {
   const [botDCAEnabled, setBotDCAEnabled] = useState<boolean>(true);
   const [botShowAdvanced, setBotShowAdvanced] = useState<boolean>(false);
 
+  // Add this function before the return statement (around line 600)
+  // Generate dummy portfolio history data based on date range
+  const generatePortfolioHistory = useCallback(
+    (range: string) => {
+      setPortfolioChartLoading(true);
+
+      // Define parameters based on the selected range
+      let dataPoints: number;
+      let startValue: number;
+      let volatility: number;
+      let startDate: Date;
+      let dateStep: number;
+
+      switch (range) {
+        case "24h":
+          dataPoints = 24;
+          startValue = portfolioBalance * 0.98;
+          volatility = 0.005;
+          startDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          dateStep = 60 * 60 * 1000; // 1 hour
+          break;
+        case "1w":
+          dataPoints = 7;
+          startValue = portfolioBalance * 0.95;
+          volatility = 0.01;
+          startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          dateStep = 24 * 60 * 60 * 1000; // 1 day
+          break;
+        case "1m":
+          dataPoints = 30;
+          startValue = portfolioBalance * 0.9;
+          volatility = 0.02;
+          startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          dateStep = 24 * 60 * 60 * 1000; // 1 day
+          break;
+        case "1y":
+          dataPoints = 12;
+          startValue = portfolioBalance * 0.7;
+          volatility = 0.05;
+          startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+          dateStep = 30 * 24 * 60 * 60 * 1000; // ~1 month
+          break;
+        case "all":
+        default:
+          dataPoints = 24;
+          startValue = portfolioBalance * 0.4;
+          volatility = 0.07;
+          startDate = new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000);
+          dateStep = 45 * 24 * 60 * 60 * 1000; // ~1.5 months
+          break;
+      }
+
+      // Generate data
+      const data = [];
+      let currentValue = startValue;
+
+      for (let i = 0; i < dataPoints; i++) {
+        const date = new Date(startDate.getTime() + i * dateStep);
+
+        // Random walk with upward bias
+        const change = (Math.random() - 0.4) * volatility * currentValue;
+        currentValue += change;
+
+        // Make sure we end at the current portfolio balance
+        if (i === dataPoints - 1) {
+          currentValue = portfolioBalance;
+        }
+
+        data.push({
+          date: date.toLocaleDateString(),
+          value: currentValue,
+          time: date.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        });
+      }
+
+      setPortfolioHistory(data);
+      setPortfolioChartLoading(false);
+    },
+    [portfolioBalance]
+  );
+
+  // Add this useEffect to generate data when range changes
+  useEffect(() => {
+    generatePortfolioHistory(portfolioDateRange);
+  }, [portfolioDateRange, generatePortfolioHistory]);
+
   // ============== Render ==============
   return (
     <div className="w-full max-w-7xl mx-auto p-2 sm:p-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
         <div>
-          <h1 className="text-xl sm:text-3xl font-bold">
-            Crypto-Pilot Dashboard
+          <h1 className="text-3xl font-bold crypto-dashboard-title">
+            Crypto Pilot Dashboard
           </h1>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
@@ -1197,39 +1352,108 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Portfolio Distribution (Pie Chart) */}
+        {/* Portfolio Value Chart */}
         <Card className="lg:col-span-1">
           <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-            <CardTitle className="text-base sm:text-lg">
-              Portfolio Distribution
-            </CardTitle>
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-base sm:text-lg">
+                Portfolio Value
+              </CardTitle>
+              <Select
+                value={portfolioDateRange}
+                onValueChange={(val) => setPortfolioDateRange(val)}
+              >
+                <SelectTrigger className="h-8 w-[90px]">
+                  <SelectValue placeholder="24h" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="24h">24h</SelectItem>
+                  <SelectItem value="1w">1 Week</SelectItem>
+                  <SelectItem value="1m">1 Month</SelectItem>
+                  <SelectItem value="1y">1 Year</SelectItem>
+                  <SelectItem value="all">All Time</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent className="p-3 sm:p-4 flex justify-center">
-            <div style={{ width: 200, height: 200 }}>
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie
-                    data={portfolioDistributionData}
-                    dataKey="value"
-                    nameKey="name"
-                    outerRadius={80}
-                    label={(entry) => entry.name}
-                  >
-                    {portfolioDistributionData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number, name: string) => [
-                      `${value} ${name}`,
-                      "Holdings",
-                    ]}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+            <div style={{ width: "100%", height: 200 }}>
+              {portfolioChartLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-sm text-muted-foreground">
+                    Loading chart data...
+                  </p>
+                </div>
+              ) : (
+                <ResponsiveContainer>
+                  <AreaChart data={portfolioHistory}>
+                    <defs>
+                      <linearGradient
+                        id="portfolioGradient"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="5%"
+                          stopColor="#8884d8"
+                          stopOpacity={0.8}
+                        />
+                        <stop
+                          offset="95%"
+                          stopColor="#8884d8"
+                          stopOpacity={0.1}
+                        />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      opacity={0.2}
+                    />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 10 }}
+                      allowDataOverflow
+                      minTickGap={15}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      width={60}
+                      tickFormatter={(val) => formatCurrency(val, true)}
+                    />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-background/95 backdrop-blur-sm border rounded shadow-lg p-3 text-xs">
+                              <div className="font-bold mb-1">{label}</div>
+                              <div className="text-muted-foreground mb-1">
+                                {payload[0].payload.time}
+                              </div>
+                              <div className="font-medium">
+                                Value:{" "}
+                                {formatCurrency(payload[0].value as number)}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#8884d8"
+                      fill="url(#portfolioGradient)"
+                      strokeWidth={2}
+                      isAnimationActive={true}
+                      animationDuration={1000}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1359,7 +1583,11 @@ export default function Dashboard() {
                         strokeWidth={2}
                         dot={false}
                         activeDot={{ r: 6 }}
-                        isAnimationActive={false}
+                        // enable animation
+                        isAnimationActive={true}
+                        animationBegin={0}
+                        animationDuration={2000}
+                        animationEasing="ease-in-out"
                       />
                       {/* Enhanced Tooltip */}
                       <Tooltip
@@ -1510,13 +1738,6 @@ export default function Dashboard() {
                     Data from Coindesk API; live updates from CryptoCompare
                     WebSocket.
                   </p>
-                  <p className="text-[10px] sm:text-xs text-muted-foreground">
-                    <span className="hidden sm:inline">
-                      Use your mouse wheel to zoom in and out.{" "}
-                    </span>
-                    <span className="sm:hidden">Pinch to zoom. </span>
-                    Click and drag to pan when zoomed in.
-                  </p>
                 </div>
               </CardFooter>
             </Card>
@@ -1524,7 +1745,7 @@ export default function Dashboard() {
         </div>
 
         {/* Top Cryptocurrencies */}
-        <div className="lg:col-span-1 lg:col-start-3 lg:row-span-0.4 lg:row-start-1">
+        <div className="lg:col-span-1 lg:col-start-3 lg:row-span-0 lg:row-start-1">
           <Card className="h-full">
             <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
               <CardTitle className="text-base sm:text-lg">
@@ -1768,23 +1989,57 @@ export default function Dashboard() {
           <Card>
             <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
               <CardTitle className="text-base sm:text-lg">
-                News & Tips
+                Latest Crypto News
               </CardTitle>
             </CardHeader>
             <CardContent className="p-3 sm:p-4">
-              {newsFeed.length === 0 ? (
+              {loadingNews ? (
+                <div className="flex justify-center items-center h-[100px]">
+                  <p className="text-sm text-muted-foreground">
+                    Loading news...
+                  </p>
+                </div>
+              ) : newsItems.length === 0 ? (
                 <p className="text-xs">No news items available</p>
               ) : (
-                <ul className="list-none text-sm space-y-3">
-                  {newsFeed.map((item) => (
-                    <li key={item.id}>
-                      <p className="font-semibold mb-1">{item.title}</p>
-                      <p className="text-muted-foreground text-xs">
-                        {item.snippet}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
+                <div className="h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+                  <ul className="list-none text-sm space-y-4">
+                    {newsItems.map((item) => (
+                      <li
+                        key={item.id}
+                        className="border-b pb-3 last:border-b-0"
+                      >
+                        <div className="flex gap-2">
+                          {item.imageUrl && (
+                            <div className="hidden sm:block flex-shrink-0">
+                              <img
+                                src={item.imageUrl}
+                                alt={item.title}
+                                className="h-12 w-12 rounded object-cover"
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-semibold mb-1 hover:text-primary transition-colors"
+                            >
+                              {item.title}
+                            </a>
+                            <p className="text-muted-foreground text-xs mt-1">
+                              {item.snippet}
+                            </p>
+                            <div className="text-[10px] text-muted-foreground mt-1">
+                              {item.source} · {item.publishedAt}
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </CardContent>
           </Card>

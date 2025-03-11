@@ -4,10 +4,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+      font-family: 'Courier', system-ui, Avenir, Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+      font-weight: 400;
 
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
@@ -52,6 +53,13 @@
   --sidebar-ring: oklch(0.704 0.04 256.788);
 }
 
+.crypto-dashboard-title {
+  font-family: 'Alien Moon', sans-serif;
+  /* Add any other styles you want for the title */
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
 a {
   font-weight: 500;
   color: #646cff;
@@ -59,6 +67,10 @@ a {
 }
 a:hover {
   color: #535bf2;
+}
+
+.recharts-curve {
+  transition: stroke-dashoffset 1.5s ease-out;
 }
 
 body {
@@ -73,6 +85,51 @@ h1 {
   font-size: 3.2em;
   line-height: 1.1;
 }
+
+@font-face {
+  font-family: 'Alien Moon';
+  src: url('/fonts/alien-moon/AlienMoon-3zrYX.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alien Moon';
+  src: url('/fonts/alien-moon/AlienMoonItalic-OVPlO.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alien Moon';
+  src: url('/fonts/alien-moon/AlienMoonItalic-OVPlO.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Add Nuixyber font declarations */
+@font-face {
+  font-family: 'Nuixyber';
+  src: url('/fonts/nuixyber/NuixyberInnoConvert-9M9vj.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nuixyber';
+  src: url('/fonts/nuixyber/NuixyberInnoConvertItalic-lx5pD.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+@import "tailwindcss";
+
+
 
 button {
   border-radius: 8px;
