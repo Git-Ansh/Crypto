@@ -33,13 +33,19 @@ console.log("NODE_ENV", NODE_ENV);
 const app = express();
 
 // Set up CORS
-const address = NODE_ENV === "development" ? "http://localhost:5173" : "*";
-console.log("CORS address set to:", address);
+const productionDomains = [
+  "https://www.crypto-pilot.dev",
+  "https://crypto-pilot.dev",
+];
+const corsOrigin =
+  NODE_ENV === "development" ? "http://localhost:5173" : productionDomains;
+console.log(`NODE_ENV: ${NODE_ENV}`);
+console.log("CORS allowed origins:", corsOrigin);
 
 // Middleware
 app.use(
   cors({
-    origin: address,
+    origin: corsOrigin,
     credentials: true,
   })
 );
