@@ -24,8 +24,16 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
-import { RefreshCw, ArrowUp, ArrowDown } from "lucide-react";
+import { RefreshCw, ArrowUp, ArrowDown, LogOut } from "lucide-react";le, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Table,wnMenu,
+  TableBody,nuContent,
+  TableCaption,tem,
+  TableCell,nuSeparator,
+  TableHead,nuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useNavigate } from 'react-router-dom';
 import {
   Table,
   TableBody,
@@ -49,7 +57,6 @@ import { Slider } from "@/components/ui/slider";
 // import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Settings, AlertTriangle } from "lucide-react";
 
 // ================== CONFIG ENDPOINTS ==================
 const HISTORICAL_ENDPOINT =
@@ -86,13 +93,6 @@ const BATCH_THRESHOLD = 5;
 const BATCH_WINDOW = 2000;
 const MAX_CHART_POINTS = 1000;
 const HOUR_IN_MS = 60 * 60 * 1000;
-
-interface HistoricalResponse {
-  Data: any[];
-  Err?: Record<string, any>;
-}
-
-interface CryptoInfo {
   price: number;
 }
 

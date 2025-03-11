@@ -5,7 +5,6 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { check, validationResult } = require("express-validator");
 const crypto = require("crypto");
-const admin = require("firebase-admin");
 
 // Models
 const User = require("../models/user");
@@ -17,15 +16,6 @@ const CustomError = require("../utils/CustomError");
 
 // Constants
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
-
-// Initialize Firebase Admin SDK if not initialized already
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault()
-    // Or use a service account:
-    // credential: admin.credential.cert(require("path-to-service-account.json"))
-  });
-}
 
 /**
  * Utility to create a random token string for refresh tokens
@@ -149,6 +139,7 @@ router.post(
         httpOnly: true,
         secure: process.env.NODE_ENV === "production", // only send over HTTPS in production
         sameSite: "none",
+        secure: true,
         maxAge: 15 * 60 * 1000, // 15 minutes in ms
       });
 
@@ -156,11 +147,13 @@ router.post(
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "none",
+        secure: true,
         maxAge: 7 * 24 * 60 * 60 * 1000, // e.g. 7 days
       });
 
       // Return minimal JSON (no tokens)
       res.json({
+        success: true,
         message: "Logged in successfully",
         expiresIn: 15 * 60, // optional, if you want the client to know the access token expiry in seconds
       });
@@ -186,7 +179,7 @@ router.get("/verify", async (req, res, next) => {
     console.log("Extracted Token:", token);
 
     if (!token) {
-      return next(new CustomError("No token provided", 401));
+      throw new CustomError("No token provided", 401);
     }
 
     // Verify the access token
@@ -197,11 +190,11 @@ router.get("/verify", async (req, res, next) => {
   } catch (error) {
     console.error(error);
     if (error.name === "TokenExpiredError") {
-      return next(new CustomError("Token has expired", 401));
+      throw new CustomError("Token has expired", 401);
     } else if (error.name === "JsonWebTokenError") {
-      return next(new CustomError("Invalid token", 401));
+      throw new CustomError("Invalid token", 401);
     }
-    return next(new CustomError("Server error", 500));
+    next(new CustomError("Server error", error.message, 500));
   }
 });
 
@@ -270,6 +263,7 @@ router.post("/refresh-token", async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
+      secure: true,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
     });
 
@@ -277,6 +271,7 @@ router.post("/refresh-token", async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
+      secure: true,
       maxAge: 15 * 60 * 1000, // 15 minutes in ms
     });
 
@@ -308,97 +303,19 @@ router.post("/logout", async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
+      secure: true,
     });
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
+      secure: true,
     });
 
     res.json({ message: "Logged out successfully" });
   } catch (error) {
     console.error(error);
     next(new CustomError("Server error", 500));
-  }
-});
-
-// @route   POST api/auth/google-verify
-// @desc    Verify Google token and login/register user
-// @access  Public
-router.post("/google-verify", async (req, res, next) => {
-  try {
-    const { idToken } = req.body;
-    
-    // Verify the Firebase ID token
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const { uid, email, name, picture, email_verified } = decodedToken;
-    
-    if (!email_verified) {
-      return next(new CustomError("Email not verified", 400));
-    }
-    
-    // Check if user already exists
-    let user = await User.findOne({ email });
-    
-    // If user doesn't exist, create a new one
-    if (!user) {
-      user = new User({
-        name: name || email.split('@')[0],
-        email,
-        firebaseUID: uid,
-        avatar: picture || '',
-        isGoogleUser: true
-      });
-      
-      await user.save();
-    } else {
-      // Update existing user with latest Google info
-      user.firebaseUID = uid;
-      user.avatar = picture || user.avatar;
-      user.isGoogleUser = true;
-      user.name = name || user.name;
-      
-      await user.save();
-    }
-    
-    // Create JWT token
-    const payload = {
-      user: {
-        id: user.id,
-      },
-    };
-    
-    jwt.sign(
-      payload,
-      process.env.JWT_SECRET,
-      { expiresIn: "24h" },
-      (err, token) => {
-        if (err) throw err;
-        
-        // Set HTTP-only cookie
-        res.cookie('token', token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          maxAge: 24 * 60 * 60 * 1000 // 24 hours
-        });
-        
-        // Return user data
-        const userData = {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          avatar: user.avatar
-        };
-        
-        res.json({ 
-          message: "Google authentication successful",
-          user: userData
-        });
-      }
-    );
-  } catch (err) {
-    console.error("Google verification error:", err);
-    return next(new CustomError("Server error during Google verification", 500));
   }
 });
 

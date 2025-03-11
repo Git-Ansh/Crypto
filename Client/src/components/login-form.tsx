@@ -2,6 +2,11 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
+  useNavigate as useReactRouterNavigate,
+  useLocation,
+  NavigateFunction,
+} from "react-router-dom";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -14,20 +19,31 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { Eye, EyeOff } from "lucide-react";
 import { signInWithGoogle } from "@/lib/auth";
 import { loginUser, verifyGoogleAuth } from "@/lib/api";
-import { useNavigate, NavigateFunction } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
-// Custom hook to safely use navigate
-const useSafeNavigate = (): NavigateFunction | ((path: string) => void) => {
+// Safe navigation hook that falls back to window.location if Router context is missing
+const useNavigate = () => {
   try {
     // Try to use the real navigate hook
-    return useNavigate();
+    return useReactRouterNavigate();
   } catch (e) {
-    // If it fails, return a fallback function
-    return (path: string) => {
-      console.warn("Navigation attempted outside Router context:", path);
-      window.location.href = path; // Fallback to basic navigation
+    // If Router context is missing, provide a fallback that matches React Router's signature
+    console.warn("Router context not found. Using fallback navigation.");
+    return (path: string, options?: { replace?: boolean; state?: any }) => {
+      // In a real app, you might want to handle the state somehow
+      window.location.href = path;
     };
+  }
+};
+
+// Safe location hook
+const useSafeLocation = () => {
+  try {
+    return useLocation();
+  } catch (e) {
+    console.warn("Router context not found. Using empty location object.");
+    return { state: {} };
   }
 };
 
@@ -45,8 +61,25 @@ export function LoginForm({
     password: "",
   });
   const [error, setError] = useState("");
-  const navigate = useSafeNavigate();
+
+  // Use safe versions of hooks
+  const navigate = useNavigate();
+  const location = useSafeLocation();
   const { toast } = useToast();
+
+  // Get auth context - wrap in try/catch in case it's rendered outside AuthProvider
+  const auth = (() => {
+    try {
+      return useAuth();
+    } catch (e) {
+      console.warn("Auth context not found. Using mock implementation.");
+      return {
+        setUser: (user: any) => console.log("Would set user:", user),
+        user: null,
+      };
+    }
+  })();
+  const { setUser } = auth;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
@@ -65,10 +98,47 @@ export function LoginForm({
 
     try {
       const result = await loginUser(formData.email, formData.password);
-
+      console.log("Login result:", result.success);
       if (result.success) {
-        toast("Login successful. Redirecting to dashboard...");
-        navigate("/dashboard");
+        console.log("Login successful. Redirecting to dashboard...");
+        toast("Login successful");
+
+        // Format the user object according to our AuthContext's User interface
+        // Make sure we have all required fields: id, name, email
+        const userData = result.data || {};
+        const formattedUser = {
+          id: userData.id || userData.userId || userData._id || "user-id",
+          name:
+            userData.name ||
+            userData.displayName ||
+            formData.email.split("@")[0],
+          email: userData.email || formData.email,
+          avatar: userData.avatar || userData.photoURL,
+        };
+
+        // Set user in auth context with properly formatted user object
+        console.log("Setting user in auth context:", formattedUser);
+        setUser(formattedUser);
+
+        // Get redirect path from location state or default to dashboard
+        const from = location.state?.from?.pathname || "/dashboard";
+        console.log("Redirecting to:", from);
+
+        // Add a small delay to ensure state updates before navigation
+        setTimeout(() => {
+          console.log("Executing navigation to:", from);
+          navigate(from, { replace: true });
+
+          // Fallback if navigation doesn't work
+          setTimeout(() => {
+            console.log(
+              "Checking if navigation occurred, using fallback if needed"
+            );
+            if (window.location.pathname !== from) {
+              window.location.href = from;
+            }
+          }, 500);
+        }, 100);
       } else {
         setError(result.message || "Login failed");
       }
@@ -90,7 +160,7 @@ export function LoginForm({
         const idToken = await result.user.getIdToken();
 
         // Make sure we're using the correct API URL - no undefined in path
-        const apiUrl = "https://api.crypto-pilot.dev"; // Or your actual backend URL
+        const apiUrl = "http://localhost:5000"; // Or your actual backend URL
         const response = await fetch(`${apiUrl}/api/auth/google-verify`, {
           method: "POST",
           headers: {
@@ -102,8 +172,49 @@ export function LoginForm({
         const backendResult = await response.json();
 
         if (backendResult.success) {
-          toast("Login successful. Redirecting to dashboard...");
-          navigate("/dashboard");
+          toast("Login successful");
+
+          // Format user data consistently
+          const userData = backendResult.data || {};
+          const googleUser = {
+            id:
+              userData.id ||
+              userData.userId ||
+              userData._id ||
+              result.user.uid ||
+              "google-user",
+            name:
+              userData.name ||
+              userData.displayName ||
+              result.user.displayName ||
+              "Google User",
+            email: userData.email || result.user.email || "unknown@example.com",
+            avatar:
+              userData.avatar || userData.photoURL || result.user.photoURL,
+          };
+
+          console.log("Setting Google user in auth context:", googleUser);
+          setUser(googleUser);
+
+          // Get redirect path from location state or default to dashboard
+          const from = location.state?.from?.pathname || "/dashboard";
+          console.log("Google login successful, redirecting to:", from);
+
+          // Add a small delay to ensure state updates before navigation
+          setTimeout(() => {
+            console.log("Executing navigation to:", from);
+            navigate(from, { replace: true });
+
+            // Fallback if navigation doesn't work
+            setTimeout(() => {
+              console.log(
+                "Checking if navigation occurred, using fallback if needed"
+              );
+              if (window.location.pathname !== from) {
+                window.location.href = from;
+              }
+            }, 500);
+          }, 100);
         } else {
           setError(backendResult.message || "Server verification failed");
         }

@@ -1,34 +1,85 @@
-import { 
-  GoogleAuthProvider, 
-  OAuthProvider, 
-  signInWithPopup, 
+import {
+  GoogleAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
   signOut as firebaseSignOut,
   AuthError,
-  getAuth
+  getAuth,
+  onAuthStateChanged,
+  User,
 } from "firebase/auth";
 import { auth } from "./firebase";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  useEffect,
+} from "react";
+
+// Define a proper type for the user
+type AuthUser = User | null;
+
+const AuthContext = createContext<{
+  user: AuthUser;
+  setUser: (u: AuthUser) => void;
+  loading: boolean;
+}>({
+  user: null,
+  setUser: () => { },
+  loading: true,
+});
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<AuthUser>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Listen to Firebase auth state changes
+  useEffect(() => {
+    console.log("Setting up auth listener");
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      console.log("Auth state changed:", firebaseUser ? "logged in" : "logged out");
+      setUser(firebaseUser);
+      setLoading(false);
+    }, (error) => {
+      console.error("Auth state error:", error);
+      setLoading(false);
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, []);
+
+  // Use createElement for non-JSX .ts file
+  return React.createElement(
+    AuthContext.Provider,
+    { value: { user, setUser, loading } },
+    children
+  );
+}
+
+export function useAuth() {
+  return useContext(AuthContext);
+}
 
 // Google sign-in handler
 export const signInWithGoogle = async () => {
   try {
     const provider = new GoogleAuthProvider();
-    provider.addScope('profile');
-    provider.addScope('email');
-    
-    // Use the existing auth instance imported from "./firebase" instead of calling getAuth()
-    // const auth = getAuth();  // remove this line
-    
+    provider.addScope("profile");
+    provider.addScope("email");
+
     const result = await signInWithPopup(auth, provider);
-    
-    return { 
-      success: true, 
-      user: result.user 
+
+    return {
+      success: true,
+      user: result.user,
     };
   } catch (error) {
     console.error("Google sign-in error:", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Google sign-in failed',
+      message: error instanceof Error ? error.message : "Google sign-in failed",
     };
   }
 };
@@ -36,20 +87,20 @@ export const signInWithGoogle = async () => {
 // Apple sign-in handler
 export const signInWithApple = async () => {
   try {
-    const provider = new OAuthProvider('apple.com');
-    provider.addScope('email');
-    provider.addScope('name');
+    const provider = new OAuthProvider("apple.com");
+    provider.addScope("email");
+    provider.addScope("name");
     const result = await signInWithPopup(auth, provider);
     return { success: true, user: result.user };
   } catch (error) {
     const authError = error as AuthError;
     console.error("Apple sign-in error:", authError.code, authError.message);
-    return { 
-      success: false, 
-      error: { 
-        code: authError.code, 
-        message: authError.message 
-      } 
+    return {
+      success: false,
+      error: {
+        code: authError.code,
+        message: authError.message,
+      },
     };
   }
 };
@@ -62,12 +113,12 @@ export const signOut = async () => {
   } catch (error) {
     const authError = error as AuthError;
     console.error("Sign out error:", authError.code, authError.message);
-    return { 
-      success: false, 
-      error: { 
-        code: authError.code, 
-        message: authError.message 
-      } 
+    return {
+      success: false,
+      error: {
+        code: authError.code,
+        message: authError.message,
+      },
     };
   }
 };
