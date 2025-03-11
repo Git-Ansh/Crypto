@@ -57,7 +57,7 @@ const app = express();
 //const PORT = process.env.PORT || 5000;
 
 var address = "https://crypto-pilot.dev";
-var allowedOrigins = ["https://crypto-pilot.dev", "https://www.crypto-pilot.dev"];
+var allowedOrigins = ["https://crypto-pilot.dev", "https://www.crypto-pilot.dev", "https://api.crypto-pilot.dev"];
 
 if (NODE_ENV === "development") {
   address = "http://localhost:5173";
