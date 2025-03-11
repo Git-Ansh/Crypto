@@ -90,7 +90,7 @@ export function LoginForm({
         const idToken = await result.user.getIdToken();
 
         // Make sure we're using the correct API URL - no undefined in path
-        const apiUrl = "https://api.crypto-pilot.dev"; // Or your actual backend URL
+        const apiUrl = "https://api.crypto-pilot.dev/"; // Or your actual backend URL
         const response = await fetch(`${apiUrl}/api/auth/google-verify`, {
           method: "POST",
           headers: {

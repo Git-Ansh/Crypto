@@ -57,7 +57,12 @@ const app = express();
 //const PORT = process.env.PORT || 5000;
 
 var address = "https://crypto-pilot.dev";
-var allowedOrigins = ["https://crypto-pilot.dev", "https://www.crypto-pilot.dev", "https://api.crypto-pilot.dev"];
+var allowedOrigins = [
+  "https://crypto-pilot.dev",
+  "https://www.crypto-pilot.dev",
+  "https://api.crypto-pilot.dev",
+  "http://localhost:5173"
+];
 
 if (NODE_ENV === "development") {
   address = "http://localhost:5173";
@@ -70,7 +75,7 @@ console.log("Allowed origins:", allowedOrigins);
 const corsOptions = {
   origin: function (origin, callback) {
     // For development, allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    if (allowedOrigins.includes(origin) || !origin) {
       callback(null, true);
     } else {
       console.log(`CORS blocked origin: ${origin}`);
@@ -159,13 +164,24 @@ const tradesRoutes = require("../Server/routes/trades");
 
 // Special handler for Google auth verification route
 app.use('/api/auth/google-verify', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', NODE_ENV === 'development' ? 'http://localhost:5173' : address);
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin) || !origin) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  } else {
+    res.header('Access-Control-Allow-Origin', address);
+  }
+  res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   res.header('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
   next();
 });
 
 // Use Routes
 app.use("/api/auth", authRoutes);
+app.use("/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/trades", tradesRoutes);
 

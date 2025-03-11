@@ -1,7 +1,7 @@
 import { config } from "./config";
 
 // Fix the API base URL - make sure there's no undefined in the path
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.crypto-pilot.dev'; // Use your actual backend URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.crypto-pilot.dev/'; // Use your actual backend URL
 
 /**
  * Helper function to make API requests with proper error handling
