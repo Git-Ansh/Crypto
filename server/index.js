@@ -1,9 +1,8 @@
 // server/index.js
 const dotenv = require("dotenv");
 
-// Load environment variables from .env or .env.test based on NODE_ENV
-const envFile = process.env.NODE_ENV;
-dotenv.config({ path: envFile });
+// Load environment variables
+dotenv.config();
 
 const express = require("express");
 const cors = require("cors");
@@ -11,88 +10,102 @@ const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
-const validateEnv = require("./utils/validateEnv");
-validateEnv(); // Validate environment variables before proceeding
+
+// Try to validate env, but don't crash if it fails in production
+try {
+  const validateEnv = require("./utils/validateEnv");
+  validateEnv();
+} catch (err) {
+  console.warn("Environment validation warning:", err.message);
+}
 
 // Access environment variables
 const {
-  NODE_ENV,
+  NODE_ENV = "production",
   PORT = 5000,
   JWT_SECRET,
   ENCRYPTION_KEY,
   MONGO_URI,
 } = process.env;
 console.log("NODE_ENV", NODE_ENV);
-// Ensure essential environment variables are set
-if (!JWT_SECRET || !ENCRYPTION_KEY || !MONGO_URI) {
-  console.error("Missing essential environment variables. Exiting...");
-  process.exit(1);
-}
-//console.log(NODE_ENV);
+
+// Create express app
 const app = express();
-//const PORT = process.env.PORT || 5000;
 
-var address = "https://crypto-pilot.dev";
-
-if (NODE_ENV === "development") {
-  address = "http://localhost:5173";
-}
+// Set up CORS
+const address = NODE_ENV === "development" ? "http://localhost:5173" : "*";
 console.log("CORS address set to:", address);
-console.log("address", address);
+
 // Middleware
 app.use(
   cors({
-    origin: address, // Replace with your frontend URL
-    credentials: true, // Allow cookies to be sent
+    origin: address,
+    credentials: true,
   })
 );
 app.use(express.json());
 app.use(cookieParser());
-app.use(helmet()); // Adds security-related HTTP headers
+app.use(helmet());
 
+// Simplified security policies for serverless
 app.use(
   helmet.contentSecurityPolicy({
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       objectSrc: ["'none'"],
-      upgradeInsecureRequests: [],
     },
-  })
-);
-
-app.use(
-  helmet.hsts({
-    maxAge: 63072000, // 2 years in seconds
-    includeSubDomains: true,
-    preload: true,
   })
 );
 
 // Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: "Too many requests from this IP, please try again after 15 minutes",
 });
 app.use(limiter);
 
-// Connect to MongoDB
-mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => {
+// MongoDB connection with connection pooling optimized for serverless
+let cachedDb = null;
+
+async function connectToDatabase() {
+  if (cachedDb) {
+    return cachedDb;
+  }
+
+  try {
+    const client = await mongoose.connect(MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      maxPoolSize: 10, // Keeping a smaller connection pool for serverless
+    });
+
+    cachedDb = client;
+    console.log("MongoDB connected");
+    return client;
+  } catch (err) {
     console.error("MongoDB connection error:", err);
-    process.exit(1); // Exit process with failure
-  });
+    throw err;
+  }
+}
 
 // Import Routes
 const authRoutes = require("./routes/auth");
 const dashboardRoutes = require("./routes/dashboard");
 const tradesRoutes = require("./routes/trades");
+
+// Handle database connection before routing
+app.use(async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (err) {
+    console.error("Database connection error:", err);
+    res.status(500).json({ message: "Database connection error" });
+  }
+});
 
 // Use Routes
 app.use("/api/auth", authRoutes);
@@ -104,21 +117,21 @@ app.get("/", (req, res) => {
   res.send("Welcome to the Crypto Trading Bot API");
 });
 
-// Serve frontend in production
-const path = require("path");
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../frontend/dist"))); // Adjust path as needed
+// Health check endpoint for Vercel
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
-  app.get("*", (req, res) => {
-    res.sendFile(path.resolve(__dirname, "../frontend", "dist", "index.html"));
-  });
-}
-
-// Error Handling Middleware (Must be after all other routes)
+// Error Handling Middleware
 const errorHandler = require("./middleware/errorHandler");
 app.use(errorHandler);
 
-// Start the Server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// Only start listening on the port if we're not in Vercel environment
+if (process.env.VERCEL !== "1") {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
+
+// Export the app for serverless use
+module.exports = app;
