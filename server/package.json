@@ -6,7 +6,7 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "jest",
-    "build": "npm install"
+    "build": "npm audit fix && npm install && mkdir -p public"
   },
   "keywords": [],
   "author": "",
