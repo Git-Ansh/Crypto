@@ -1,9 +1,17 @@
 // server/index.js
 const dotenv = require("dotenv");
+const path = require("path");
 
-// Load environment variables from proper .env file
+// Load environment variables with absolute path
 const envFile = process.env.NODE_ENV === 'production' ? '.env' : '.env.development';
-dotenv.config({ path: envFile });
+const envPath = path.resolve(__dirname, envFile);
+console.log(`Loading environment from: ${envPath}`);
+dotenv.config({ path: envPath });
+
+// Double-check with direct loading of .env file regardless of NODE_ENV
+const defaultEnvPath = path.resolve(__dirname, '.env');
+console.log(`Also checking default .env at: ${defaultEnvPath}`);
+dotenv.config({ path: defaultEnvPath });
 
 const express = require("express");
 const cors = require("cors");
@@ -11,8 +19,24 @@ const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
+
+console.log("Environment variables loaded:", {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  JWT_SECRET: process.env.JWT_SECRET ? "***[SET]***" : "undefined",
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ? "***[SET]***" : "undefined",
+  MONGO_URI: process.env.MONGO_URI ? "***[SET]***" : "undefined",
+});
+
+// Now validate the environment
 const validateEnv = require("./utils/validateEnv");
-validateEnv(); // Validate environment variables before proceeding
+try {
+  validateEnv(); // Validate environment variables after loading
+  console.log("Environment validation passed");
+} catch (error) {
+  console.error("Environment validation failed:", error.message);
+  process.exit(1);
+}
 
 // Access environment variables
 const {
@@ -33,21 +57,23 @@ const app = express();
 //const PORT = process.env.PORT || 5000;
 
 var address = "https://crypto-pilot.dev";
+var allowedOrigins = ["https://crypto-pilot.dev", "https://www.crypto-pilot.dev"];
 
 if (NODE_ENV === "development") {
   address = "http://localhost:5173";
+  allowedOrigins = ["http://localhost:5173"];
 }
 console.log("CORS address set to:", address);
-console.log("address", address);
+console.log("Allowed origins:", allowedOrigins);
 
 // Enhanced CORS configuration
 const corsOptions = {
   origin: function (origin, callback) {
-    const allowedOrigins = [address];
     // For development, allow requests with no origin (like mobile apps or curl requests)
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      console.log(`CORS blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -55,11 +81,30 @@ const corsOptions = {
   credentials: true,
   preflightContinue: false,
   optionsSuccessStatus: 204,
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 
 // Apply CORS middleware before all routes
 app.use(cors(corsOptions));
+
+// Additional CORS headers middleware to ensure they are set
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  if (allowedOrigins.includes(origin) || !origin) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+  
+  // Handle preflight OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  
+  next();
+});
 
 // Handle OPTIONS requests explicitly
 app.options('*', cors(corsOptions));
@@ -112,6 +157,13 @@ const authRoutes = require("../Server/routes/auth");
 const dashboardRoutes = require("../Server/routes/dashboard");
 const tradesRoutes = require("../Server/routes/trades");
 
+// Special handler for Google auth verification route
+app.use('/api/auth/google-verify', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', NODE_ENV === 'development' ? 'http://localhost:5173' : address);
+  res.header('Access-Control-Allow-Credentials', 'true');
+  next();
+});
+
 // Use Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
@@ -123,7 +175,6 @@ app.get("/", (req, res) => {
 });
 
 // Serve frontend in production
-const path = require("path");
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../frontend/dist"))); // Adjust path as needed
 

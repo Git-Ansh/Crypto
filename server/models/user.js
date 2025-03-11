@@ -1,5 +1,5 @@
 // server/models/User.js
-const mongoose = require('../Server/mongoose');
+const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema({
   username: {

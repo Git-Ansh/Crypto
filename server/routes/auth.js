@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const { check, validationResult } = require("../Server/express-validator");
+const { check, validationResult } = require("express-validator");
 const crypto = require("crypto");
 const admin = require("firebase-admin");
 

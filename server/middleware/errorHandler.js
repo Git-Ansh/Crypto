@@ -1,5 +1,5 @@
 // server/middleware/errorHandler.js
-const CustomError = require("../Server/utils/CustomError");
+const CustomError = require("../utils/CustomError");
 
 /**
  * Centralized error handling middleware.
