@@ -281,7 +281,7 @@ export default function Dashboard() {
       const resp = await axios.get(TOP_CURRENCIES_ENDPOINT);
 
       if (!resp.data || !resp.data.RAW) {
-        throw new Error("Invalid data format from CryptoCompare API");
+        throw new Error("Invalid data format from cryptocompare API");
       }
 
       const rawData = resp.data.RAW;
@@ -291,7 +291,7 @@ export default function Dashboard() {
         const usdData = rawData[symbol].USD;
         currencies.push({
           symbol,
-          name: symbol,
+          name: symbol, // We could fetch full names if needed
           price: usdData.PRICE,
           volume: usdData.VOLUME24HOUR,
           marketCap: usdData.MKTCAP,
@@ -300,18 +300,20 @@ export default function Dashboard() {
         });
       });
 
-      // Sort by market cap (descending) and take top 10
+      // Sort by market cap and take top 10
       const top10 = currencies
         .sort((a, b) => b.marketCap - a.marketCap)
         .slice(0, 10);
       setTopCurrencies(top10);
       setIsLoadingCurrencies(false);
+
+      return true;
     } catch (err: any) {
       console.error("Error fetching top currencies:", err);
       setIsLoadingCurrencies(false);
+      return false;
     }
   }, []);
-
   // ============== Historical & Ticker Data ==============
   const fetchHistoricalDataForCurrency = useCallback(
     async (symbol: string): Promise<KlineData[]> => {
@@ -1038,7 +1040,17 @@ export default function Dashboard() {
                     </span>
                   </p>
                 </div>
-                <Switch checked={botActive} onCheckedChange={setBotActive} />
+                <div
+                  className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background 
+    data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
+                  data-state={botActive ? "checked" : "unchecked"}
+                  onClick={() => setBotActive((prev) => !prev)}
+                >
+                  <span
+                    className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
+                    data-state={botActive ? "checked" : "unchecked"}
+                  />
+                </div>
               </div>
 
               <div>
@@ -1133,11 +1145,18 @@ export default function Dashboard() {
                           Maintains target allocation
                         </span>
                       </div>
-                      <Switch
-                        id="auto-rebalance"
-                        checked={botAutoRebalance}
-                        onCheckedChange={setBotAutoRebalance}
-                      />
+                      <div
+                        className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
+                        data-state={botAutoRebalance ? "checked" : "unchecked"}
+                        onClick={() => setBotAutoRebalance((prev) => !prev)}
+                      >
+                        <span
+                          className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
+                          data-state={
+                            botAutoRebalance ? "checked" : "unchecked"
+                          }
+                        />
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -1149,11 +1168,16 @@ export default function Dashboard() {
                           Dollar-cost averaging
                         </span>
                       </div>
-                      <Switch
-                        id="dca-enabled"
-                        checked={botDCAEnabled}
-                        onCheckedChange={setBotDCAEnabled}
-                      />
+                      <div
+                        className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
+                        data-state={botDCAEnabled ? "checked" : "unchecked"}
+                        onClick={() => setBotDCAEnabled((prev) => !prev)}
+                      >
+                        <span
+                          className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
+                          data-state={botDCAEnabled ? "checked" : "unchecked"}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1500,7 +1524,7 @@ export default function Dashboard() {
         </div>
 
         {/* Top Cryptocurrencies */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 lg:col-start-3 lg:row-span-0.4 lg:row-start-1">
           <Card className="h-full">
             <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
               <CardTitle className="text-base sm:text-lg">
@@ -1508,7 +1532,7 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-auto max-h-[400px] sm:max-h-[600px]">
+              <div className="overflow-auto max-h-[450px] sm:max-h-[450px]">
                 <Table className="w-full">
                   <TableCaption className="text-[10px] sm:text-xs">
                     Updated in real-time via WebSocket
