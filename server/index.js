@@ -56,19 +56,12 @@ if (!JWT_SECRET || !ENCRYPTION_KEY || !MONGO_URI) {
 const app = express();
 //const PORT = process.env.PORT || 5000;
 
-var address = "https://crypto-pilot.dev";
 var allowedOrigins = [
-  "https://crypto-pilot.dev",
+  "http://localhost:5173",
   "https://www.crypto-pilot.dev",
-  "https://api.crypto-pilot.dev",
-  "http://localhost:5173"
+  "https://api.crypto-pilot.dev"
 ];
 
-if (NODE_ENV === "development") {
-  address = "http://localhost:5173";
-  allowedOrigins = ["http://localhost:5173"];
-}
-console.log("CORS address set to:", address);
 console.log("Allowed origins:", allowedOrigins);
 
 // Enhanced CORS configuration
@@ -95,19 +88,20 @@ app.use(cors(corsOptions));
 // Additional CORS headers middleware to ensure they are set
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  
+
   if (allowedOrigins.includes(origin) || !origin) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.header('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
-  
+
   // Handle preflight OPTIONS requests
   if (req.method === 'OPTIONS') {
-    return res.status(204).end();
+    res.status(204).end();
+    return;
   }
-  
+
   next();
 });
 
@@ -167,8 +161,6 @@ app.use('/api/auth/google-verify', (req, res, next) => {
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin) || !origin) {
     res.header('Access-Control-Allow-Origin', origin || '*');
-  } else {
-    res.header('Access-Control-Allow-Origin', address);
   }
   res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');

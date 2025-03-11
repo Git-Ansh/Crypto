@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "jest"
+    "test": "jest",
+    "vercel-build": "echo 'No build step required for Node server'"
   },
   "keywords": [],
   "author": "",
