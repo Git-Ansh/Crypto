@@ -2,8 +2,14 @@
  * Application configuration
  */
 
-// Determine if we're in production based on NODE_ENV
-const isProduction = import.meta.env.NODE_ENV === 'production';
+// More reliable production check - check both NODE_ENV and deployment URL
+const isProduction =
+  import.meta.env.NODE_ENV === 'production' ||
+  window.location.hostname !== 'localhost';
+
+// Log the environment for debugging
+console.log('Environment:', import.meta.env.NODE_ENV);
+console.log('Is production:', isProduction);
 
 // Get the appropriate URLs based on environment
 const API_URL = isProduction
