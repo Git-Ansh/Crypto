@@ -22,7 +22,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <ThemeProvider defaultTheme="system" storageKey="theme">
         <AuthProvider>
-          <App />
+          <div className="min-h-screen flex flex-col items-center">
+            <App />
+          </div>
           <Toaster position="top-right" />
         </AuthProvider>
       </ThemeProvider>

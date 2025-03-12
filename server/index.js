@@ -1,10 +1,10 @@
 // server/index.js
 const dotenv = require("dotenv");
+const express = require("express");
+const path = require("path");
 
 // Load environment variables
 dotenv.config();
-
-const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
@@ -126,14 +126,24 @@ app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/trades", tradesRoutes);
 
-// Basic Route
+// Always serve static files and fallback to index.html for client-side routing
+const clientPath = path.join(__dirname, "..", "Client");
+// Serve static files from the client folder
+app.use(express.static(clientPath));
+
+// Basic Route (optional)
 app.get("/", (req, res) => {
   res.send("Welcome to the Crypto Trading Bot API");
 });
 
-// Health check endpoint for Vercel
+// Health check endpoint
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });
+});
+
+// Fallback route for client-side routing
+app.get("*", (req, res) => {
+  res.sendFile(path.join(clientPath, "index.html"));
 });
 
 // Error Handling Middleware

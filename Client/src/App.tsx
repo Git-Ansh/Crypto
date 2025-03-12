@@ -1,18 +1,11 @@
-import { ThemeProvider } from "@/components/theme-provider";
-import { type ReactNode } from "react";
-import { LoginForm } from "@/components/login-form";
-import Dashboard from "@/components/dashboard";
+import React from "react";
+import { AppRouter } from "./router";
+import { useLocation } from "react-router-dom";
 
-function App({ children }: { children?: ReactNode }) {
-  return (
-    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
-      <div className="flex min-h-screen w-screen items-center justify-center">
-        <LoginForm />
-        {/* <Dashboard /> */}
-      </div>
-      {children}
-    </ThemeProvider>
-  );
-}
+const App: React.FC = () => {
+  const location = useLocation();
+  // Return AppRouter without any wrapper divs
+  return <AppRouter />;
+};
 
 export default App;

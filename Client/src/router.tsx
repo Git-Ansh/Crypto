@@ -1,14 +1,9 @@
 import React from "react";
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-  useLocation,
-} from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Dashboard from "@/components/dashboard";
 import { LoginForm } from "@/components/login-form";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
+import TestPage from "./components/TestPage";
 
 // Protected route component that uses our existing AuthContext
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -30,6 +25,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
     return <div>Loading authentication status...</div>;
   }
 
+  // Restore original authentication check - remove bypass
   // Redirect to login if not authenticated
   if (!user) {
     console.log("No user found, redirecting to login");
@@ -42,27 +38,27 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 };
 
 export function AppRouter() {
+  console.log("AppRouter rendering - all routes");
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          {/* Login route */}
-          <Route path="/login" element={<LoginForm />} />
+    <Routes>
+      {/* Test route - unprotected and moved to the top for priority */}
+      <Route path="/test" element={<TestPage />} />
 
-          {/* Protected Dashboard route */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
+      {/* Login route */}
+      <Route path="/login" element={<LoginForm />} />
 
-          {/* Redirect root to /dashboard, which will be protected */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+      {/* Protected Dashboard route */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Redirect root to login page instead of dashboard */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+    </Routes>
   );
 }
