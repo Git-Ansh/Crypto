@@ -32,28 +32,20 @@ console.log("NODE_ENV", NODE_ENV);
 // Create express app
 const app = express();
 
-// Set up CORS with a dynamic origin based on environment
-const allowedOrigins =
-  NODE_ENV === "development"
-    ? ["http://localhost:5173", "http://localhost:3000"]
-    : ["https://www.crypto-pilot.dev", "https://crypto-pilot.dev"];
-
-console.log("CORS allowed origins:", allowedOrigins);
+// Set up CORS
+const productionDomains = [
+  "https://www.crypto-pilot.dev",
+  "https://crypto-pilot.dev",
+];
+const corsOrigin =
+  NODE_ENV === "development" ? "http://localhost:5173" : productionDomains;
+console.log(`NODE_ENV: ${NODE_ENV}`);
+console.log("CORS allowed origins:", corsOrigin);
 
 // Middleware
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps, curl, etc)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.indexOf(origin) === -1) {
-        const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
-        return callback(new Error(msg), false);
-      }
-
-      return callback(null, true);
-    },
+    origin: corsOrigin,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
