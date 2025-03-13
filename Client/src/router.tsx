@@ -37,15 +37,42 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   return <>{children}</>;
 };
 
+// Add a new component for public routes (routes that should only be accessible when logged out)
+const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // Show loading state while checking authentication
+  if (loading) {
+    return <div>Loading authentication status...</div>;
+  }
+
+  // Redirect to dashboard if user is authenticated
+  if (user) {
+    console.log("User is authenticated, redirecting to dashboard");
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  console.log("User not authenticated, showing public content");
+  return <>{children}</>;
+};
+
 export function AppRouter() {
   console.log("AppRouter rendering - all routes");
   return (
     <Routes>
-      {/* Test route - unprotected and moved to the top for priority */}
+      {/* Test route - unprotected */}
       <Route path="/test" element={<TestPage />} />
 
-      {/* Login route */}
-      <Route path="/login" element={<LoginForm />} />
+      {/* Login route - only accessible when logged out */}
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <LoginForm />
+          </PublicRoute>
+        }
+      />
 
       {/* Protected Dashboard route */}
       <Route
@@ -57,8 +84,25 @@ export function AppRouter() {
         }
       />
 
-      {/* Redirect root to login page instead of dashboard */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      {/* Redirect root based on auth status */}
+      <Route
+        path="/"
+        element={
+          <PublicRoute>
+            <Navigate to="/login" replace />
+          </PublicRoute>
+        }
+      />
+
+      {/* Catch all route - redirect to login or dashboard based on auth status */}
+      <Route
+        path="*"
+        element={
+          <PublicRoute>
+            <Navigate to="/login" replace />
+          </PublicRoute>
+        }
+      />
     </Routes>
   );
 }

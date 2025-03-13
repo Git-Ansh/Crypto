@@ -1,7 +1,7 @@
 "use client";
-// Add these new imports at the top of the file with the other recharts imports
-import { AreaChart, Area } from "recharts";
+
 import { useState, useEffect, useRef, useCallback } from "react";
+import { AreaChart, Area } from "recharts";
 import axios from "axios";
 import {
   ResponsiveContainer,
@@ -11,9 +11,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  // PieChart,
-  // Pie,
-  // Cell,
 } from "recharts";
 import {
   Card,
@@ -24,7 +21,13 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
-import { RefreshCw, ArrowUp, ArrowDown } from "lucide-react";
+import {
+  RefreshCw,
+  ArrowUp,
+  ArrowDown,
+  Settings,
+  AlertTriangle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -41,15 +44,15 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  // SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-// import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Settings, AlertTriangle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { config } from "@/lib/config";
 
 // ================== CONFIG ENDPOINTS ==================
 const HISTORICAL_ENDPOINT =
@@ -124,6 +127,9 @@ interface CurrencyData {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
   const [cryptoData, setCryptoData] = useState<CryptoInfo | null>(null);
   const [chartData, setChartData] = useState<KlineData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -1162,6 +1168,9 @@ export default function Dashboard() {
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
             <div className="flex items-center gap-2">
+              <div className="text-xs sm:text-sm text-muted-foreground">
+                Last updated: {lastUpdated || "Never"}
+              </div>
               <span
                 className={cn(
                   "inline-block w-2 h-2 rounded-full",
@@ -1180,11 +1189,28 @@ export default function Dashboard() {
                 <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 {loading ? "Loading" : "Refresh"}
               </Button>
+              <ModeToggle />
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await fetch(`${config.api.baseUrl}/api/auth/logout`, {
+                      method: "POST",
+                      credentials: "include",
+                    });
+                    // Use the logout function from AuthContext
+                    await logout();
+                    // Redirect to login
+                    navigate("/login");
+                  } catch (error) {
+                    console.error("Logout failed:", error);
+                  }
+                }}
+              >
+                Logout
+              </Button>
             </div>
-            <div className="text-xs sm:text-sm text-muted-foreground">
-              Last updated: {lastUpdated || "Never"}
-            </div>
-            <ModeToggle />
           </div>
         </div>
 
@@ -1256,7 +1282,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="p-3 sm:p-4">
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center">
                   <div className="flex items-center gap-2">
                     <div
                       className={cn(
@@ -1274,17 +1300,6 @@ export default function Dashboard() {
                         {botActive ? "Active" : "Paused"}
                       </span>
                     </p>
-                  </div>
-                  <div
-                    className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background 
-    data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
-                    data-state={botActive ? "checked" : "unchecked"}
-                    onClick={() => setBotActive((prev) => !prev)}
-                  >
-                    <span
-                      className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
-                      data-state={botActive ? "checked" : "unchecked"}
-                    />
                   </div>
                 </div>
 
@@ -1902,15 +1917,19 @@ export default function Dashboard() {
                                 {currency.change24h > 0 ? (
                                   <ArrowUp className="h-3 w-3 text-green-500" />
                                 ) : (
-                                  <ArrowDown className="h-3 w-3 text-red-500" />
+                                  <ArrowDown className="h-3 w-3 text-red-400" />
                                 )}
                                 <Badge
                                   variant={
                                     currency.change24h > 0
-                                      ? "outline"
+                                      ? "success"
                                       : "destructive"
                                   }
-                                  className="text-[10px] px-1 py-0"
+                                  className={cn(
+                                    "text-[10px] px-1 py-0",
+                                    currency.change24h < 0 &&
+                                      "bg-red-500/10 text-red-400 dark:text-red-400 dark:bg-red-500/20"
+                                  )}
                                 >
                                   {Math.abs(currency.change24h).toFixed(1)}%
                                 </Badge>
@@ -1933,53 +1952,42 @@ export default function Dashboard() {
           <div className="flex flex-col gap-4">
             {/* Quick Trade Card */}
             <Card>
-              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardHeader className="p-3 sm:p-4 pb-0">
                 <CardTitle className="text-base sm:text-lg">
                   Quick Trade
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
-                <p className="text-sm mb-2">
+                <p className="text-xs sm:text-sm mb-2">
                   For simplicity, a novice can instantly buy/sell the currently
                   selected currency.
                 </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="default"
-                    onClick={() =>
-                      alert(`(Placeholder) Buying 0.01 ${selectedCurrency}`)
-                    }
-                  >
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button className="w-full sm:w-auto" variant="default">
                     Buy 0.01 {selectedCurrency}
                   </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() =>
-                      alert(`(Placeholder) Selling 0.01 ${selectedCurrency}`)
-                    }
-                  >
+                  <Button className="w-full sm:w-auto" variant="destructive">
                     Sell 0.01 {selectedCurrency}
                   </Button>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Bot Roadmap / Upcoming Actions */}
+            {/* Bot Roadmap - Adjust table for mobile */}
             <Card>
-              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardHeader className="p-3 sm:p-4 pb-0">
                 <CardTitle className="text-base sm:text-lg">
                   Bot Roadmap
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-auto max-h-[200px] sm:max-h-[250px]">
+                <div className="overflow-x-auto">
                   <Table className="w-full">
-                    <TableCaption className="text-[10px] sm:text-xs">
-                      Next planned moves
-                    </TableCaption>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-xs">Date</TableHead>
+                        <TableHead className="text-xs whitespace-nowrap">
+                          Date
+                        </TableHead>
                         <TableHead className="text-xs">Plan</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -2014,31 +2022,26 @@ export default function Dashboard() {
 
           {/* RIGHT COLUMN: Recent Trades + News/Tips */}
           <div className="flex flex-col gap-4">
-            {/* Recent Trades */}
+            {/* Recent Trades - Optimize table for mobile */}
             <Card>
-              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardHeader className="p-3 sm:p-4 pb-0">
                 <CardTitle className="text-base sm:text-lg">
                   Recent Trades
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-auto max-h-[200px] sm:max-h-[250px]">
+                <div className="overflow-x-auto">
                   <Table className="w-full">
-                    <TableCaption className="text-[10px] sm:text-xs">
-                      Latest activity by the bot
-                    </TableCaption>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-xs">Type</TableHead>
-                        <TableHead className="text-xs">Symbol</TableHead>
-                        <TableHead className="text-right text-xs">
-                          Amount
-                        </TableHead>
-                        <TableHead className="text-right text-xs">
-                          Price
-                        </TableHead>
-                        <TableHead className="text-right text-xs">
+                        <TableHead className="text-xs whitespace-nowrap">
                           Time
+                        </TableHead>
+                        <TableHead className="text-xs whitespace-nowrap">
+                          Action
+                        </TableHead>
+                        <TableHead className="text-xs text-right whitespace-nowrap">
+                          Amount
                         </TableHead>
                       </TableRow>
                     </TableHeader>
@@ -2089,9 +2092,9 @@ export default function Dashboard() {
 
             {/* News / Educational Tips */}
             <Card>
-              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardHeader className="p-3 sm:p-4 pb-0">
                 <CardTitle className="text-base sm:text-lg">
-                  Latest Crypto News
+                  News & Tips
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
@@ -2104,8 +2107,8 @@ export default function Dashboard() {
                 ) : newsItems.length === 0 ? (
                   <p className="text-xs">No news items available</p>
                 ) : (
-                  <div className="h-[300px] overflow-y-auto pr-1 scrollbar-thin">
-                    <ul className="list-none text-sm space-y-4">
+                  <div className="h-[250px] sm:h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+                    <ul className="list-none text-xs sm:text-sm space-y-4">
                       {newsItems.map((item) => (
                         <li
                           key={item.id}

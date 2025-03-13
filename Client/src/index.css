@@ -6,7 +6,7 @@
 
 
 :root {
-      font-family: 'Courier', system-ui, Avenir, Helvetica, Arial, sans-serif;
+      font-family: 'futura', system-ui, Avenir, Helvetica, Arial, sans-serif;
       line-height: 1.5;
       font-weight: 400;
 
@@ -53,11 +53,14 @@
   --sidebar-ring: oklch(0.704 0.04 256.788);
 }
 
+/* Add responsive container styles */
 .crypto-dashboard-title {
   font-family: 'Alien Moon', sans-serif;
-  /* Add any other styles you want for the title */
   font-weight: bold;
   letter-spacing: 0.5px;
+  font-size: clamp(1.2rem, 4vw, 2rem); /* Responsive font size */
+  text-align: center;
+  padding: 0 1rem;
 }
 
 a {
@@ -77,7 +80,6 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
@@ -147,6 +149,88 @@ h1 {
   display: none;
   /* Chrome, Safari, Opera */
 }
+
+/* Mobile optimization utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Enhance mobile responsiveness */
+@media (max-width: 768px) {
+  :root {
+    --card-padding: 0.75rem;
+  }
+  
+  /* Improve container layout */
+  body {
+    overflow-x: hidden;
+    max-width: 100vw;
+    padding: 0.5rem;
+  }
+  
+  /* Make all containers respect viewport width */
+  div, section, main {
+    max-width: 100%;
+    width: 100%;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    box-sizing: border-box;
+  }
+  
+  /* Adjust card layouts */
+  .card {
+    margin: 0.5rem 0;
+    width: 100%;
+    min-width: unset;
+  }
+  
+  /* Stack elements vertically on narrow screens */
+  .flex {
+    flex-direction: column;
+  }
+  
+  /* Ensure buttons and interactive elements are properly sized */
+  button, 
+  select,
+  [role="button"],
+  input {
+    min-height: 44px;
+    width: 100%;
+    max-width: 100%;
+    margin: 0.25rem 0;
+  }
+  
+  /* Adjust charts and data visualizations */
+  .recharts-wrapper,
+  .chart-container {
+    width: 100% !important;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+}
+
+/* Add extra small screen optimizations */
+@media (max-width: 380px) {
+  :root {
+    --card-padding: 0.5rem;
+  }
+  
+  body {
+    padding: 0.25rem;
+  }
+  
+  /* Further reduce spacing */
+  div, section, main {
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+}
+
 button {
   border-radius: 8px;
   border: 1px solid transparent;
@@ -213,7 +297,7 @@ button:focus-visible {
   --accent: oklch(0.279 0.041 260.031);
   --accent-foreground: oklch(0.984 0.003 247.858);
   --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --destructive-foreground: oklch(0.837 0.237 25.331); /* Made brighter for dark mode */
   --border: oklch(0.279 0.041 260.031);
   --input: oklch(0.279 0.041 260.031);
   --ring: oklch(0.446 0.043 257.281);
@@ -230,6 +314,15 @@ button:focus-visible {
   --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
   --sidebar-border: oklch(0.279 0.041 260.031);
   --sidebar-ring: oklch(0.446 0.043 257.281);
+}
+
+/* Add specific styling for the red values in dark mode */
+.dark .text-red-400 {
+  color: rgb(248 113 113); /* Brighter red that's more visible in dark mode */
+}
+
+.dark .bg-red-500\/20 {
+  background-color: rgb(239 68 68 / 0.2); /* Slightly more visible background */
 }
 
 @theme inline {
@@ -278,4 +371,914 @@ button:focus-visible {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Add responsive container styles */
+@media (max-width: 768px) {
+  /* Adjust button and toggle sizes for mobile */
+  button[size="icon"],
+  button[data-size="icon"] {
+    height: 32px;
+    width: 32px;
+    padding: 0;
+  }
+
+  /* Adjust theme toggle specifically */
+  button[aria-label="Toggle theme"],
+  .mode-toggle button {
+    height: 28px;
+    width: 28px;
+    padding: 4px;
+  }
+
+  /* Adjust switch/toggle components */
+  [data-slot="switch"] {
+    height: 16px !important;
+    width: 28px !important;
+  }
+
+  [data-slot="switch-thumb"] {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  /* Adjust icon sizes within buttons */
+  button svg,
+  [role="button"] svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Adjust dropdown menu items */
+  .dropdown-menu-content {
+    font-size: 0.875rem;
+    padding: 0.25rem;
+  }
+
+  /* Make regular buttons more compact */
+  button:not([size="icon"]) {
+    padding: 0.4em 0.8em;
+    font-size: 0.875em;
+    min-height: 32px;
+  }
+}
+
+/* Extra small screen adjustments */
+@media (max-width: 380px) {
+  button[size="icon"],
+  button[data-size="icon"] {
+    height: 28px;
+    width: 28px;
+  }
+
+  [data-slot="switch"] {
+    height: 14px !important;
+    width: 24px !important;
+  }
+
+  [data-slot="switch-thumb"] {
+    width: 10px !important;
+    height: 10px !important;
+  }
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 768px) {
+  /* Reset and fix Select trigger */
+  .SelectTrigger,
+  [data-slot="select-trigger"] {
+    width: 100% !important;
+    min-width: unset !important;
+    max-width: 100% !important;
+  }
+
+  /* Fix portal and content positioning */
+  .SelectPortal,
+  [data-radix-select-portal] {
+    position: fixed !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: calc(100% - 32px) !important;
+    max-width: 300px !important;
+  }
+
+  /* Fix content container */
+  [data-slot="select-content"] {
+    position: relative !important;
+    width: 100% !important;
+    min-width: unset !important;
+    max-width: none !important;
+    margin: 4px 0 !important;
+    transform: none !important;
+    left: 0 !important;
+    height: auto !important;
+    min-height: 200px !important;
+  }
+
+  /* Fix viewport */
+  [data-slot="select-content"] .SelectViewport {
+    width: 100% !important;
+    padding: 8px !important;
+    height: auto !important;
+    min-height: 200px !important;
+    max-height: 50vh !important;
+  }
+
+  /* Fix items alignment and visibility */
+  [data-slot="select-item"] {
+    width: 100% !important;
+    padding: 12px !important;
+    font-size: 16px !important;
+    height: auto !important;
+    min-height: 44px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    position: relative !important;
+    left: 0 !important;
+    transform: none !important;
+  }
+
+  /* Fix item text alignment */
+  [data-slot="select-item"] [data-slot="select-item-text"] {
+    position: relative !important;
+    left: 0 !important;
+    transform: none !important;
+    text-align: left !important;
+    width: 100% !important;
+  }
+
+  /* Fix item indicator (checkmark) position */
+  [data-slot="select-item"] [data-slot="select-item-indicator"] {
+    position: absolute !important;
+    right: 8px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+  }
+
+  /* Ensure proper z-index and visibility */
+  [data-radix-select-portal] {
+    z-index: 9999 !important;
+    height: auto !important;
+    min-height: 200px !important;
+  }
+}
+
+/* Remove any interfering styles */
+[data-slot="select-item"],
+[data-slot="select-item"] * {
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+}
+
+/* Ensure text is visible and aligned properly */
+[data-slot="select-item-text"] {
+  display: block !important;
+  width: calc(100% - 24px) !important; /* Account for checkmark */
+  text-align: left !important;
+  white-space: normal !important;
+  overflow: visible !important;
+}
+
+/* Fix animation while maintaining height */
+[data-slot="select-content"][data-side="bottom"] {
+  animation: selectDropDown 0.2s ease-out !important;
+  height: auto !important;
+  min-height: 200px !important;
+}
+
+@keyframes selectDropDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 768px) {
+  /* Fix Select component container */
+  .SelectTrigger,
+  [data-slot="select-trigger"] {
+    width: 100% !important;
+    min-width: 200px !important;
+    max-width: 100% !important;
+  }
+
+  /* Fix dropdown content positioning and width */
+  [data-slot="select-content"] {
+    min-width: 200px !important;
+    width: var(--radix-select-trigger-width) !important;
+    max-width: calc(100vw - 24px) !important;
+    position: relative !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+  }
+
+  /* Fix Select viewport */
+  .SelectViewport,
+  [role="presentation"] .SelectViewport {
+    width: 100% !important;
+    padding: 4px !important;
+    max-height: 300px !important;
+  }
+
+  /* Fix Select items */
+  [data-slot="select-item"] {
+    width: 100% !important;
+    padding: 10px 12px !important;
+    font-size: 14px !important;
+    min-height: 40px !important;
+  }
+
+  /* Ensure proper positioning relative to trigger */
+  [data-slot="select-content"][data-side="bottom"] {
+    margin-top: 4px !important;
+    top: 100% !important;
+  }
+
+  /* Fix Select value display */
+  [data-slot="select-value"] {
+    width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* Bot Control Panel Fixes */
+  .relative.inline-flex[data-state] {
+    width: 42px !important;
+    height: 22px !important;
+    border-radius: 9999px !important;
+    padding: 2px !important;
+    background-color: var(--input) !important;
+  }
+
+  /* Toggle thumb (circle) */
+  .relative.inline-flex[data-state] span {
+    width: 18px !important;
+    height: 18px !important;
+    transform: translateX(0) !important;
+  }
+
+  /* Toggle states */
+  .relative.inline-flex[data-state="checked"] {
+    background-color: var(--primary) !important;
+  }
+
+  .relative.inline-flex[data-state="checked"] span {
+    transform: translateX(20px) !important;
+  }
+
+  .relative.inline-flex[data-state="unchecked"] span {
+    transform: translateX(0) !important;
+  }
+
+  /* Progress bars in bot panel */
+  div[role="progressbar"] {
+    width: 100% !important;
+    height: 6px !important;
+    border-radius: 3px !important;
+  }
+
+  /* Bot panel metrics spacing */
+  .space-y-2 > div,
+  .space-y-3 > div {
+    margin: 0.5rem 0;
+  }
+
+  /* Keep toggle containers properly aligned */
+  .flex.items-center.justify-between {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    margin: 0.5rem 0 !important;
+  }
+
+  /* Make dashboard title bigger */
+  .crypto-dashboard-title {
+    font-size: clamp(1.8rem, 6vw, 2.5rem);
+    margin-bottom: 1rem;
+  }
+
+  /* Position mode toggle next to refresh button */
+  .mode-toggle {
+    position: static !important; /* Override any fixed positioning */
+    margin-left: 0.5rem;
+  }
+
+  /* Adjust bot control toggles to be compact and properly shaped */
+  div[role="switch"],
+  .relative[data-state] {
+    width: 36px !important;
+    height: 20px !important;
+    position: relative;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  /* Adjust the toggle thumb (the circle part) */
+  div[role="switch"] span,
+  .relative[data-state] span {
+    width: 16px !important;
+    height: 16px !important;
+    transform: translateY(-50%) !important;
+    top: 50% !important;
+  }
+
+  /* Adjust the positioning of the thumb for checked/unchecked states */
+  span[data-state="checked"] {
+    transform: translateX(16px) translateY(-50%) !important;
+  }
+
+  span[data-state="unchecked"] {
+    transform: translateX(2px) translateY(-50%) !important;
+  }
+
+  /* Fix dropdown and button sizes */
+  .SelectTrigger,
+  select[class*="SelectTrigger"],
+  div[class*="SelectTrigger"] {
+    width: auto !important;
+    min-width: 120px;
+    max-width: fit-content;
+  }
+
+  /* Ensure controls container stays horizontal */
+  .flex.items-center.gap-2 {
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  /* Portfolio value timeframe dropdown */
+  div[class*="portfolio-timeframe"] .SelectTrigger,
+  div[class*="portfolio-timeframe"] select {
+    width: auto !important;
+    min-width: 90px;
+    max-width: fit-content;
+  }
+
+  /* Fix button layout in flex containers */
+  .flex button:not([size="icon"]) {
+    width: auto;
+  }
+
+  /* Adjust control groups to prevent stretching */
+  .flex-row,
+  .items-center {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.5rem;
+  }
+
+  /* Ensure controls don't stretch in their containers */
+  .card-content .flex,
+  .card-header .flex {
+    align-items: center;
+    justify-content: space-between;
+    flex-direction: row;
+  }
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 768px) {
+  /* Portal positioning */
+  .SelectPortal,
+  [data-radix-select-portal] {
+    position: fixed !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: calc(100% - 32px) !important;
+    max-width: 300px !important;
+  }
+
+  /* Content container */
+  [data-slot="select-content"] {
+    width: 100% !important;
+    min-height: 200px !important;
+  }
+
+  /* Fix viewport */
+  .SelectViewport {
+    padding: 8px !important;
+  }
+}
+
+/* Override Radix UI's default styles */
+[data-slot="select-content"] {
+  width: 100% !important;
+  min-width: 200px !important;
+  background: var(--popover) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Reset and fix item styles */
+[data-slot="select-item"] {
+  all: unset !important;
+  display: flex !important;
+  width: 100% !important;
+  min-height: 40px !important;
+  padding: 8px 12px !important;
+  position: relative !important;
+  cursor: pointer !important;
+  user-select: none !important;
+}
+
+/* Fix text positioning */
+[data-slot="select-item"] [data-radix-select-item-text] {
+  all: unset !important;
+  display: block !important;
+  flex: 1 !important;
+  text-align: left !important;
+  padding-right: 24px !important; /* Space for checkmark */
+}
+
+/* Fix checkmark positioning */
+[data-slot="select-item"] [data-radix-select-item-indicator] {
+  position: absolute !important;
+  right: 8px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  [data-radix-select-portal] {
+    position: fixed !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: calc(100% - 32px) !important;
+    max-width: 300px !important;
+  }
+
+  [data-slot="select-content"] {
+    width: 100% !important;
+  }
+
+  [data-slot="select-viewport"] {
+    padding: 4px !important;
+  }
+}
+
+/* Remove any transforms on text */
+[data-radix-select-item-text] {
+  transform: none !important;
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+}
+
+/* Ensure proper text wrapping */
+[data-slot="select-item"] span {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+/* Switch Component Styles */
+[data-slot="switch"] {
+  position: relative;
+  display: inline-flex;
+  height: 24px;
+  width: 44px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-color: var(--input);
+  transition: background-color 200ms;
+}
+
+[data-slot="switch"][data-state="checked"] {
+  background-color: var(--primary);
+}
+
+[data-slot="switch-thumb"] {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background-color: var(--background);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  transition: transform 200ms;
+  transform: translateX(2px);
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+[data-slot="switch"][data-state="checked"] [data-slot="switch-thumb"] {
+  transform: translateX(20px);
+}
+
+/* Mobile-only switch styles */
+@media (max-width: 768px) {
+  /* Reset any existing switch styles */
+  [data-slot="switch"],
+  div[role="switch"],
+  .relative.inline-flex[data-state] {
+    all: unset;
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+    background-color: var(--input);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background-color 200ms ease;
+  }
+
+  /* Thumb (circle) styles */
+  [data-slot="switch-thumb"],
+  div[role="switch"] span,
+  .relative.inline-flex[data-state] span {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background-color: var(--background);
+    border-radius: 50%;
+    transition: transform 200ms ease;
+  }
+
+  /* Checked state */
+  [data-slot="switch"][data-state="checked"],
+  div[role="switch"][data-state="checked"],
+  .relative.inline-flex[data-state="checked"] {
+    background-color: var(--primary);
+  }
+
+  /* Thumb position when checked */
+  [data-slot="switch"][data-state="checked"] [data-slot="switch-thumb"],
+  div[role="switch"][data-state="checked"] span,
+  .relative.inline-flex[data-state="checked"] span {
+    transform: translateX(14px);
+  }
+
+  /* Unchecked state thumb position */
+  [data-slot="switch"][data-state="unchecked"] [data-slot="switch-thumb"],
+  div[role="switch"][data-state="unchecked"] span,
+  .relative.inline-flex[data-state="unchecked"] span {
+    transform: translateX(0);
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 380px) {
+  [data-slot="switch"],
+  div[role="switch"],
+  .relative.inline-flex[data-state] {
+    width: 28px;
+    height: 16px;
+  }
+
+  [data-slot="switch-thumb"],
+  div[role="switch"] span,
+  .relative.inline-flex[data-state] span {
+    width: 12px;
+    height: 12px;
+  }
+
+  [data-slot="switch"][data-state="checked"] [data-slot="switch-thumb"],
+  div[role="switch"][data-state="checked"] span,
+  .relative.inline-flex[data-state="checked"] span {
+    transform: translateX(12px);
+  }
+}
+
+/* Mobile-specific Bot Control Panel styles */
+@media (max-width: 768px) {
+  /* Bot Control Panel Container */
+  .bot-control-panel {
+    padding: 12px;
+  }
+
+  /* Toggle Container */
+  .bot-toggle-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    gap: 8px;
+  }
+
+  /* Toggle Switch Base */
+  .bot-toggle {
+    position: relative;
+    width: 42px;
+    height: 22px;
+    border-radius: 11px;
+    background-color: var(--input);
+    cursor: pointer;
+    transition: background-color 200ms;
+    padding: 2px;
+  }
+
+  /* Toggle Switch Active State */
+  .bot-toggle[data-state="checked"] {
+    background-color: var(--primary);
+  }
+
+  /* Toggle Switch Thumb */
+  .bot-toggle-thumb {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background-color: var(--background);
+    border-radius: 50%;
+    transition: transform 200ms;
+  }
+
+  /* Toggle Switch Thumb Positions */
+  .bot-toggle[data-state="checked"] .bot-toggle-thumb {
+    transform: translateX(20px);
+  }
+
+  .bot-toggle[data-state="unchecked"] .bot-toggle-thumb {
+    transform: translateX(0);
+  }
+
+  /* Bot Control Labels */
+  .bot-control-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--foreground);
+  }
+
+  /* Progress bars in bot panel */
+  .bot-progress-bar {
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    margin: 8px 0;
+  }
+
+  /* Bot metrics container */
+  .bot-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0;
+  }
+
+  /* Bot metric item */
+  .bot-metric-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+  }
+
+  /* Bot control buttons */
+  .bot-control-button {
+    width: 100%;
+    height: 36px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    margin-top: 12px;
+  }
+
+  /* Bot status indicators */
+  .bot-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background-color: var(--accent);
+  }
+
+  /* DCA Settings section */
+  .dca-settings {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Settings groups */
+  .settings-group {
+    margin-bottom: 16px;
+  }
+
+  /* Settings row */
+  .settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  /* Value displays */
+  .value-display {
+    font-size: 14px;
+    color: var(--muted-foreground);
+  }
+}
+
+/* Extra small screens adjustments */
+@media (max-width: 380px) {
+  .bot-toggle {
+    width: 36px;
+    height: 20px;
+  }
+
+  .bot-toggle-thumb {
+    width: 16px;
+    height: 16px;
+  }
+
+  .bot-toggle[data-state="checked"] .bot-toggle-thumb {
+    transform: translateX(16px);
+  }
+
+  .bot-control-button {
+    height: 32px;
+    font-size: 13px;
+  }
+
+  .bot-control-label {
+    font-size: 13px;
+  }
+}
+
+/* Bot Control Panel - Mobile First Design */
+.bot-panel {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+}
+
+/* Bot Metrics Section */
+.bot-metrics {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.metric-item {
+  margin-bottom: 12px;
+}
+
+.metric-item:last-child {
+  margin-bottom: 0;
+}
+
+.metric-label {
+  font-size: 13px;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.bot-progress {
+  height: 6px;
+  margin: 6px 0;
+  background-color: var(--input);
+  border-radius: 3px;
+}
+
+.metric-value {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* Strategy Settings Section */
+.strategy-settings {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-header {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Bot Control Elements */
+.bot-control-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Action Buttons */
+.bot-actions {
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bot-control-button {
+  width: 100%;
+  height: 36px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Extra Small Screen Adjustments */
+@media (max-width: 380px) {
+  .bot-control-label {
+    font-size: 12px;
+  }
+
+  .bot-control-button {
+    height: 32px;
+    font-size: 13px;
+  }
+
+  .settings-header {
+    font-size: 13px;
+  }
+
+  .metric-label {
+    font-size: 12px;
+  }
+}
+
+/* Tablet and Desktop Adjustments */
+@media (min-width: 768px) {
+  .settings-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .setting-item {
+    flex: 1 1 calc(50% - 8px);
+  }
+
+  .bot-actions {
+    flex-direction: row;
+  }
+
+  .bot-control-button {
+    flex: 1;
+  }
+}
+
+/* Mode toggle responsive positioning */
+.mode-toggle-container {
+  position: fixed;
+  right: 1rem; /* Ensure it's on the right */
+  top: 1rem;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end; /* Force alignment to the right */
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .mode-toggle-container {
+    right: 0.75rem; /* Keep it on the right for mobile */
+    top: 0.75rem;
+  }
+  
+  .mode-toggle {
+    height: 2rem !important;
+    width: 2rem !important;
+    padding: 0.375rem !important;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 380px) {
+  .mode-toggle-container {
+    right: 0.5rem; /* Maintain right positioning */
+    top: 0.5rem;
+  }
+  
+  .mode-toggle {
+    height: 1.75rem !important;
+    width: 1.75rem !important;
+    padding: 0.25rem !important;
+  }
+}
+
+/* Ensure the toggle button itself stays in position */
+.mode-toggle {
+  position: relative !important; /* Override any absolute positioning */
+  right: 0 !important; /* Ensure it stays right-aligned */
 }
