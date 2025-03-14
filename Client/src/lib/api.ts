@@ -46,9 +46,11 @@ export async function loginUser(email: string, password: string) {
  * Verify Google Authentication
  */
 export async function verifyGoogleAuth(idToken: string) {
+  // Use the full path with /api prefix to match your server routes
   return apiRequest("/api/auth/google-verify", {
     method: "POST",
     body: JSON.stringify({ idToken }),
+    credentials: "include", // Important for cookies
   });
 }
 

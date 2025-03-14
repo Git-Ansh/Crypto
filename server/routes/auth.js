@@ -5,6 +5,18 @@ const bcrypt = require("bcryptjs"); // Changed from bcrypt to bcryptjs
 const jwt = require("jsonwebtoken");
 const { check, validationResult } = require("express-validator");
 const crypto = require("crypto");
+const admin = require("firebase-admin");
+
+// Initialize Firebase Admin SDK if not already initialized
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    }),
+  });
+}
 
 // Models
 const User = require("../models/user");
@@ -316,6 +328,106 @@ router.post("/logout", async (req, res, next) => {
   } catch (error) {
     console.error(error);
     next(new CustomError("Server error", 500));
+  }
+});
+
+// ============== GOOGLE AUTH VERIFICATION ROUTE ==============
+router.post("/google-verify", async (req, res, next) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      throw new CustomError("No ID token provided", 400);
+    }
+
+    // Verify the Firebase ID token
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid, email, name, picture } = decodedToken;
+
+    // Check if user exists in our database
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Create a new user if they don't exist
+      user = new User({
+        username: name || email.split("@")[0],
+        email,
+        firebaseUid: uid,
+        avatar: picture,
+        // No password needed for OAuth users
+      });
+
+      await user.save();
+    } else {
+      // Update existing user with Firebase UID if needed
+      if (!user.firebaseUid) {
+        user.firebaseUid = uid;
+        if (picture && !user.avatar) user.avatar = picture;
+        await user.save();
+      }
+    }
+
+    // Delete expired refresh tokens
+    await RefreshToken.deleteMany({
+      userId: user._id,
+      expiresAt: { $lt: new Date() },
+    });
+
+    // Create JWT access token
+    const accessPayload = { user: { id: user.id } };
+    const accessToken = jwt.sign(accessPayload, process.env.JWT_SECRET, {
+      expiresIn: "15m",
+    });
+
+    // Generate refresh token
+    const rawRefresh = generateRefreshTokenString();
+    const encryptedRefresh = encrypt(rawRefresh);
+
+    // Calculate refresh token expiry
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+
+    // Store encrypted refresh token in DB
+    await RefreshToken.create({
+      userId: user._id,
+      encryptedToken: encryptedRefresh,
+      expiresAt: expiry,
+    });
+
+    // Set cookies
+    res.cookie("token", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "none",
+      secure: true,
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+
+    res.cookie("refreshToken", rawRefresh, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "none",
+      secure: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    // Return success response with minimal user data
+    res.json({
+      success: true,
+      message: "Google authentication successful",
+      data: {
+        id: user._id,
+        name: user.username,
+        email: user.email,
+        avatar: user.avatar,
+      },
+    });
+  } catch (error) {
+    console.error("Google auth error:", error);
+    if (!(error instanceof CustomError)) {
+      return next(new CustomError("Server error", 500));
+    }
+    next(error);
   }
 });
 

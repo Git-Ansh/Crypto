@@ -11,6 +11,20 @@ const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 
+// Import Firebase Admin SDK if not already imported
+const admin = require("firebase-admin");
+
+// Initialize Firebase Admin SDK if not already initialized
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    }),
+  });
+}
+
 // Try to validate env, but don't crash if it fails in production
 try {
   const validateEnv = require("./utils/validateEnv");
@@ -126,6 +140,105 @@ app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/trades", tradesRoutes);
 
+// Add Google Auth verification endpoint with /api prefix
+app.post("/api/auth/google-verify", async (req, res) => {
+  try {
+    console.log("Google auth verification endpoint hit");
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No ID token provided" });
+    }
+
+    // Log the request for debugging
+    console.log(
+      "Processing Google auth with token:",
+      idToken.substring(0, 10) + "..."
+    );
+
+    // Verify the Firebase ID token
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid, email, name, picture } = decodedToken;
+
+    // Check if user exists in our database
+    let user = await mongoose.model("User").findOne({ email });
+
+    if (!user) {
+      // Create a new user if they don't exist
+      user = new mongoose.model("User")({
+        username: name || email.split("@")[0],
+        email,
+        firebaseUid: uid,
+        avatar: picture,
+      });
+
+      await user.save();
+    } else {
+      // Update existing user with Firebase UID if needed
+      if (!user.firebaseUid) {
+        user.firebaseUid = uid;
+        if (picture && !user.avatar) user.avatar = picture;
+        await user.save();
+      }
+    }
+
+    // Create JWT access token
+    const accessPayload = { user: { id: user.id } };
+    const accessToken = jwt.sign(accessPayload, JWT_SECRET, {
+      expiresIn: "15m",
+    });
+
+    // Generate refresh token
+    const rawRefresh = crypto.randomBytes(32).toString("hex");
+
+    // Calculate refresh token expiry
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + 7); // 7 days
+
+    // Store refresh token in DB (simplified for direct implementation)
+    await mongoose.model("RefreshToken").create({
+      userId: user._id,
+      token: rawRefresh,
+      expiresAt: expiry,
+    });
+
+    // Set cookies
+    res.cookie("token", accessToken, {
+      httpOnly: true,
+      secure: NODE_ENV === "production",
+      sameSite: "none",
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+
+    res.cookie("refreshToken", rawRefresh, {
+      httpOnly: true,
+      secure: NODE_ENV === "production",
+      sameSite: "none",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    // Return success response with user data
+    res.json({
+      success: true,
+      message: "Google authentication successful",
+      data: {
+        id: user._id,
+        name: user.username,
+        email: user.email,
+        avatar: user.avatar,
+      },
+    });
+  } catch (error) {
+    console.error("Google auth error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Authentication failed: " + (error.message || "Unknown error"),
+    });
+  }
+});
+
 // Always serve static files and fallback to index.html for client-side routing
 const clientPath = path.join(__dirname, "..", "Client");
 // Serve static files from the client folder
@@ -159,3 +272,11 @@ if (process.env.VERCEL !== "1") {
 
 // Export the app for serverless use
 module.exports = app;
+
+// Add this after all your routes are registered
+console.log("Registered routes:");
+app._router.stack.forEach(function (r) {
+  if (r.route && r.route.path) {
+    console.log(r.route.path);
+  }
+});

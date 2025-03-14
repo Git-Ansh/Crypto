@@ -176,11 +176,10 @@ export function LoginForm({
       try {
         const result = await signInWithGoogle();
         if (result.success && result.user) {
-          // Add null check for result.user
-          // Now that we have Firebase auth, send the token to our backend
+          // Get the Firebase ID token
           const idToken = await result.user.getIdToken();
 
-          // Use the API utility which uses the correct environment URL
+          // Send token to our backend for verification
           const backendResult = await verifyGoogleAuth(idToken);
 
           if (backendResult.success) {
@@ -189,45 +188,18 @@ export function LoginForm({
             // Format user data consistently
             const userData = backendResult.data || {};
             const googleUser = {
-              id:
-                userData.id ||
-                userData.userId ||
-                userData._id ||
-                result.user.uid ||
-                "google-user",
-              name:
-                userData.name ||
-                userData.displayName ||
-                result.user.displayName ||
-                "Google User",
-              email:
-                userData.email || result.user.email || "unknown@example.com",
-              avatar:
-                userData.avatar || userData.photoURL || result.user.photoURL,
+              id: userData.id || userData._id || result.user.uid,
+              name: userData.name || result.user.displayName || "Google User",
+              email: userData.email || result.user.email,
+              avatar: userData.avatar || result.user.photoURL,
             };
 
-            console.log("Setting Google user in auth context:", googleUser);
+            // Update auth context
             setUser(googleUser);
 
-            // Get redirect path from location state or default to dashboard
+            // Navigate to dashboard
             const from = location.state?.from?.pathname || "/dashboard";
-            console.log("Google login successful, redirecting to:", from);
-
-            // Add a small delay to ensure state updates before navigation
-            setTimeout(() => {
-              console.log("Executing navigation to:", from);
-              navigate(from, { replace: true });
-
-              // Fallback if navigation doesn't work
-              setTimeout(() => {
-                console.log(
-                  "Checking if navigation occurred, using fallback if needed"
-                );
-                if (window.location.pathname !== from) {
-                  window.location.href = from;
-                }
-              }, 500);
-            }, 100);
+            navigate(from, { replace: true });
           } else {
             setError(backendResult.message || "Server verification failed");
           }
