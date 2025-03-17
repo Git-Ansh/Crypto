@@ -1,5 +1,5 @@
 "use client";
-
+import { ChevronDown } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AreaChart, Area } from "recharts";
 import axios from "axios";
@@ -40,13 +40,11 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -1310,31 +1308,46 @@ export default function Dashboard() {
                   >
                     Strategy
                   </Label>
-                  <Select
-                    value={botStrategy}
-                    onValueChange={(value) => setBotStrategy(value)}
-                  >
-                    <SelectTrigger id="strategy-select" className="mt-1 w-full">
-                      <SelectValue placeholder="Select strategy" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="Aggressive Growth">
-                          Aggressive Growth
-                        </SelectItem>
-                        <SelectItem value="Conservative">
-                          Conservative
-                        </SelectItem>
-                        <SelectItem value="Balanced">Balanced</SelectItem>
-                        <SelectItem value="DCA">
-                          Dollar-Cost Averaging
-                        </SelectItem>
-                        <SelectItem value="Trend Following">
-                          Trend Following
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        id="strategy-select"
+                        variant="outline"
+                        className="mt-1 w-full flex justify-between items-center"
+                      >
+                        {botStrategy || "Select strategy"}
+                        <ChevronDown className="h-4 w-4 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      className="w-[580px] h-auto"
+                    >
+                      <DropdownMenuItem
+                        onClick={() => setBotStrategy("Aggressive Growth")}
+                      >
+                        Aggressive Growth
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setBotStrategy("Conservative")}
+                      >
+                        Conservative
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setBotStrategy("Balanced")}
+                      >
+                        Balanced
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setBotStrategy("DCA")}>
+                        Dollar-Cost Averaging
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setBotStrategy("Trend Following")}
+                      >
+                        Trend Following
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
                 {/* Bot performance metrics */}
@@ -1463,21 +1476,44 @@ export default function Dashboard() {
                 <CardTitle className="text-base sm:text-lg">
                   Portfolio Value
                 </CardTitle>
-                <Select
-                  value={portfolioDateRange}
-                  onValueChange={(val) => setPortfolioDateRange(val)}
-                >
-                  <SelectTrigger className="h-8 w-[90px]">
-                    <SelectValue placeholder="24h" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="24h">24h</SelectItem>
-                    <SelectItem value="1w">1 Week</SelectItem>
-                    <SelectItem value="1m">1 Month</SelectItem>
-                    <SelectItem value="1y">1 Year</SelectItem>
-                    <SelectItem value="all">All Time</SelectItem>
-                  </SelectContent>
-                </Select>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="h-8 w-[120px] flex justify-between items-center"
+                    >
+                      {portfolioDateRange}
+                      <ChevronDown className="h-4 w-4 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem
+                      onClick={() => setPortfolioDateRange("24h")}
+                    >
+                      24h
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setPortfolioDateRange("1w")}
+                    >
+                      1 Week
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setPortfolioDateRange("1m")}
+                    >
+                      1 Month
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setPortfolioDateRange("1y")}
+                    >
+                      1 Year
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setPortfolioDateRange("all")}
+                    >
+                      All Time
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </CardHeader>
             <CardContent className="p-3 sm:p-4 flex justify-center">

@@ -4,7 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-
 :root {
       font-family: 'futura', system-ui, Avenir, Helvetica, Arial, sans-serif;
       line-height: 1.5;
@@ -72,8 +71,6 @@ a:hover {
   color: #535bf2;
 }
 
-
-
 .recharts-curve {
   transition: stroke-dashoffset 1.5s ease-out;
 }
@@ -84,10 +81,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow-x: hidden;
-  
+
 }
-
-
 
 h1 {
   font-size: 3.2em;
@@ -165,14 +160,14 @@ h1 {
   :root {
     --card-padding: 0.75rem;
   }
-  
+
   /* Improve container layout */
   body {
     overflow-x: hidden;
     max-width: 100vw;
     padding: 0.5rem;
   }
-  
+
   /* Make all containers respect viewport width */
   div, section, main {
     max-width: 100%;
@@ -181,19 +176,19 @@ h1 {
     padding-right: 0.5rem;
     box-sizing: border-box;
   }
-  
+
   /* Adjust card layouts */
   .card {
     margin: 0.5rem 0;
     width: 100%;
     min-width: unset;
   }
-  
+
   /* Stack elements vertically on narrow screens */
   .flex {
     flex-direction: column;
   }
-  
+
   /* Ensure buttons and interactive elements are properly sized */
   button, 
   select,
@@ -204,7 +199,7 @@ h1 {
     max-width: 100%;
     margin: 0.25rem 0;
   }
-  
+
   /* Adjust charts and data visualizations */
   .recharts-wrapper,
   .chart-container {
@@ -219,11 +214,11 @@ h1 {
   :root {
     --card-padding: 0.5rem;
   }
-  
+
   body {
     padding: 0.25rem;
   }
-  
+
   /* Further reduce spacing */
   div, section, main {
     padding-left: 0.25rem;
@@ -1255,7 +1250,7 @@ button:focus-visible {
     right: 0.75rem; /* Keep it on the right for mobile */
     top: 0.75rem;
   }
-  
+
   .mode-toggle {
     height: 2rem !important;
     width: 2rem !important;
@@ -1269,7 +1264,7 @@ button:focus-visible {
     right: 0.5rem; /* Maintain right positioning */
     top: 0.5rem;
   }
-  
+
   .mode-toggle {
     height: 1.75rem !important;
     width: 1.75rem !important;
