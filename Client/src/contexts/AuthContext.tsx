@@ -89,9 +89,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      // Clear user data from localStorage
       localStorage.removeItem(AUTH_STORAGE_KEY);
+
+      // Clear avatar from localStorage and sessionStorage
+      localStorage.removeItem("userAvatar");
+      sessionStorage.removeItem("userAvatar");
+      localStorage.removeItem("avatarUrl");
+      sessionStorage.removeItem("avatarUrl");
+
+      // Clear any cookies that might store avatar data
+      document.cookie =
+        "userAvatar=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie =
+        "avatarUrl=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
+      // Clear user state
       setUserState(null);
 
+      // Call server logout endpoint
       const apiUrl = config.api.baseUrl;
       const response = await fetch(`${apiUrl}/api/auth/logout`, {
         method: "POST",

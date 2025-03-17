@@ -1286,7 +1286,7 @@ export default function Dashboard() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="start"
-                        className="w-[580px] h-auto"
+                        className="w-[500px] h-auto"
                       >
                         <DropdownMenuItem
                           onClick={() => setBotStrategy("Aggressive Growth")}

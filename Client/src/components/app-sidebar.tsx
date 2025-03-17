@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useEffect, useState } from "react";
 import {
   AudioWaveform,
   BookOpen,
@@ -25,6 +26,8 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 // This is sample data.
 const data = {
@@ -51,26 +54,26 @@ const data = {
     },
   ],
   navMain: [
-    {
-      title: "Playground",
-      url: "#",
-      icon: SquareTerminal,
-      isActive: true,
-      items: [
-        {
-          title: "History",
-          url: "#",
-        },
-        {
-          title: "Starred",
-          url: "#",
-        },
-        {
-          title: "Settings",
-          url: "#",
-        },
-      ],
-    },
+    // {
+    //   title: "Playground",
+    //   url: "#",
+    //   icon: SquareTerminal,
+    //   isActive: true,
+    //   items: [
+    //     {
+    //       title: "History",
+    //       url: "#",
+    //     },
+    //     {
+    //       title: "Starred",
+    //       url: "#",
+    //     },
+    //     {
+    //       title: "Settings",
+    //       url: "#",
+    //     },
+    //   ],
+    // },
     {
       title: "Models",
       url: "#",
@@ -158,16 +161,37 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const navigate = useNavigate();
-  const { logout, user } = useAuth();
+  const { logout, user: authUser } = useAuth();
+  const [firebaseUser, setFirebaseUser] = useState(auth.currentUser);
+
+  // Listen for Firebase auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Determine which user data to use
+  const userData =
+    authUser ||
+    (firebaseUser
+      ? {
+          name: firebaseUser.displayName || "User",
+          email: firebaseUser.email || "user@example.com",
+          avatar: firebaseUser.photoURL || "",
+        }
+      : null);
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <NavUser user={user} />
+        <NavUser user={userData} />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
-        <NavProjects projects={data.projects} />
+        {/* <NavProjects projects={data.projects} /> */}
       </SidebarContent>
       <SidebarFooter>
         <Button
@@ -175,6 +199,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           size="sm"
           onClick={async () => {
             try {
+              // Clear avatar from localStorage and sessionStorage
+              localStorage.removeItem("userAvatar");
+              sessionStorage.removeItem("userAvatar");
+              localStorage.removeItem("avatarUrl");
+              sessionStorage.removeItem("avatarUrl");
+
+              // Clear any cookies that might store avatar data
+              document.cookie =
+                "userAvatar=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+              document.cookie =
+                "avatarUrl=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
+              // Force browser to clear image cache for this user
+              if (userData && userData.avatar) {
+                const img = new Image();
+                img.src = userData.avatar + "?clear=" + new Date().getTime();
+              }
+
               await fetch(`${config.api.baseUrl}/api/auth/logout`, {
                 method: "POST",
                 credentials: "include",
