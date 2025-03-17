@@ -26,6 +26,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { useEffect, useState } from "react";
 
 export function NavUser({
   user = null,
@@ -38,13 +41,35 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar();
   const { user: authUser } = useAuth();
+  const [firebaseUser, setFirebaseUser] = useState(auth.currentUser);
 
-  // Combine provided user data with auth context data, prioritizing provided data
+  // Listen for Firebase auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Combine provided user data with auth context data and Firebase data
   const userData = {
-    name: user?.name || authUser?.name || "User",
-    email: user?.email || authUser?.email || "user@example.com",
-    avatar: user?.avatar || authUser?.avatar || "",
+    name: user?.name || authUser?.name || firebaseUser?.displayName || "User",
+    email:
+      user?.email ||
+      authUser?.email ||
+      firebaseUser?.email ||
+      "user@example.com",
+    avatar: user?.avatar || authUser?.avatar || firebaseUser?.photoURL || "",
   };
+
+  // Generate initials for avatar fallback
+  const initials = userData.name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .substring(0, 2)
+    .toUpperCase();
 
   return (
     <SidebarMenu>
@@ -57,7 +82,9 @@ export function NavUser({
             >
               <Avatar className="h-8 w-8 rounded-lg">
                 <AvatarImage src={userData.avatar} alt={userData.name} />
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                <AvatarFallback className="rounded-lg">
+                  {initials}
+                </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{userData.name}</span>
@@ -76,7 +103,9 @@ export function NavUser({
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
                   <AvatarImage src={userData.avatar} alt={userData.name} />
-                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                  <AvatarFallback className="rounded-lg">
+                    {initials}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{userData.name}</span>
