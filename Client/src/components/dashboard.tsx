@@ -1057,7 +1057,7 @@ export default function Dashboard() {
       <AppSidebar />
       <SidebarInset>
         {/* Add the SidebarRail with absolute positioning */}
-        <SidebarRail className="absolute top-4 left-4" />
+        <SidebarRail className="absolute top-4.5 left-4" />
 
         <style>{`
         html, body {
@@ -1155,7 +1155,7 @@ export default function Dashboard() {
                   {loading ? "Loading" : "Refresh"}
                 </Button>
                 <ModeToggle />
-                <Button
+                {/* <Button
                   variant="destructive"
                   size="sm"
                   onClick={async () => {
@@ -1172,7 +1172,7 @@ export default function Dashboard() {
                   }}
                 >
                   Logout
-                </Button>
+                </Button> */}
               </div>
             </div>
           </div>

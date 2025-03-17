@@ -255,6 +255,7 @@ export function NavUser({
               size="lg"
               id="user-menu-button"
               style={buttonStyle}
+              tooltip="Profile" // Use tooltip prop instead of title
             >
               <Avatar className="h-8 w-8 rounded-lg">
                 {showAvatar && avatarUrl ? (

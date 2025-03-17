@@ -280,30 +280,38 @@ function SidebarTrigger({
 }
 
 function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, isMobile, state } = useSidebar();
 
   return (
-    <button
-      data-sidebar="rail"
-      data-slot="sidebar-rail"
-      aria-label="Toggle Sidebar"
-      tabIndex={-1}
-      onClick={toggleSidebar}
-      title="Toggle Sidebar"
-      className={cn(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors",
-        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        "disabled:pointer-events-none disabled:opacity-50",
-        "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
-        "bg-background/80 hover:bg-accent/90 hover:text-accent-foreground h-8 w-7", // Increased height to h-8, added bg color
-        "border border-border/40 hover:border-border/80", // Added subtle border that becomes more visible on hover
-        "shadow-sm hover:shadow transition-all duration-150", // Added shadow effect that enhances on hover
-        className
-      )}
-      {...props}
-    >
-      <PanelLeftIcon className="h-4 w-4" />
-    </button>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            data-sidebar="rail"
+            data-slot="sidebar-rail"
+            aria-label="Toggle Sidebar"
+            tabIndex={-1}
+            onClick={toggleSidebar}
+            className={cn(
+              "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              "disabled:pointer-events-none disabled:opacity-50",
+              "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+              "bg-background/80 hover:bg-accent/90 hover:text-accent-foreground h-8 w-7", // Increased height to h-8, added bg color
+              "border border-border/40 hover:border-border/80", // Added subtle border that becomes more visible on hover
+              "shadow-sm hover:shadow transition-all duration-150", // Added shadow effect that enhances on hover
+              className
+            )}
+            {...props}
+          >
+            <PanelLeftIcon className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" align="center" hidden={isMobile}>
+          Toggle Sidebar
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
