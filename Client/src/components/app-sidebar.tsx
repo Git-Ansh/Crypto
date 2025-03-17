@@ -1,4 +1,4 @@
-import * as React from "react"
+import * as React from "react";
 import {
   AudioWaveform,
   BookOpen,
@@ -6,23 +6,25 @@ import {
   Command,
   Frame,
   GalleryVerticalEnd,
+  LogOut,
   Map,
   PieChart,
   Settings2,
   SquareTerminal,
-} from "lucide-react"
-
-import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
-import { NavUser } from "@/components/nav-user"
-import { TeamSwitcher } from "@/components/team-switcher"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { config } from "@/lib/config";
+import { NavMain } from "@/components/nav-main";
+import { NavProjects } from "@/components/nav-projects";
+import { NavUser } from "@/components/nav-user";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarRail,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
 // This is sample data.
 const data = {
@@ -152,22 +154,42 @@ const data = {
       icon: Map,
     },
   ],
-}
+};
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={data.teams} />
+        <NavUser user={data.user} />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
         <NavProjects projects={data.projects} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={async () => {
+            try {
+              await fetch(`${config.api.baseUrl}/api/auth/logout`, {
+                method: "POST",
+                credentials: "include",
+              });
+              await logout();
+              navigate("/login");
+            } catch (error) {
+              console.error("Logout failed:", error);
+            }
+          }}
+          className="group-data-[state=collapsed]:w-8 group-data-[state=collapsed]:h-8 group-data-[state=collapsed]:p-0 group-data-[state=collapsed]:flex group-data-[state=collapsed]:justify-center group-data-[state=collapsed]:items-center group-data-[state=collapsed]:mx-auto group-data-[state=collapsed]:ml-[calc(50%-20px)] transition-all"
+        >
+          <LogOut className="h-4 w-4 mr-2 group-data-[state=collapsed]:mr-0" />
+          <span className="group-data-[state=collapsed]:hidden">Logout</span>
+        </Button>
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
-  )
+  );
 }

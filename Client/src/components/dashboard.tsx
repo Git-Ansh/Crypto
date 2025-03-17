@@ -51,6 +51,12 @@ import { Progress } from "@/components/ui/progress";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { config } from "@/lib/config";
+import { AppSidebar } from "@/components/app-sidebar";
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarRail,
+} from "@/components/ui/sidebar";
 
 // ================== CONFIG ENDPOINTS ==================
 const HISTORICAL_ENDPOINT =
@@ -182,8 +188,6 @@ export default function Dashboard() {
     end: number;
   } | null>(null);
 
-  // const minuteDataThreshold = 12;
-
   // Top currencies
   const [topCurrencies, setTopCurrencies] = useState<CurrencyData[]>([]);
   const [isLoadingCurrencies, setIsLoadingCurrencies] = useState<boolean>(true);
@@ -272,7 +276,6 @@ export default function Dashboard() {
         maximumFractionDigits: 2,
       }).format(num);
     }
-
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
@@ -289,7 +292,6 @@ export default function Dashboard() {
   }
 
   // ============== Top Currencies ==============
-  // 3. Fix the fetchTopCurrencies function to correctly handle market cap
   const fetchTopCurrencies = useCallback(async () => {
     try {
       setIsLoadingCurrencies(true);
@@ -299,7 +301,6 @@ export default function Dashboard() {
         throw new Error("Invalid data format from cryptocompare API");
       }
 
-      // Debug to see what's coming back
       console.log(
         "CryptoCompare sample data:",
         Object.keys(resp.data.RAW)[0],
@@ -311,8 +312,6 @@ export default function Dashboard() {
 
       Object.keys(rawData).forEach((symbol) => {
         const usdData = rawData[symbol].USD;
-
-        // Fix market cap value - make sure it's accessing the right property
         const marketCap =
           usdData.MKTCAP || usdData.MARKET_CAP || usdData.TOTALVOLUME24HTO || 0;
 
@@ -327,9 +326,8 @@ export default function Dashboard() {
         });
       });
 
-      // Sort by market cap and take top 10
       const top10 = currencies
-        .filter((c) => c.marketCap > 0) // Filter out any with 0 market cap
+        .filter((c) => c.marketCap > 0)
         .sort((a, b) => b.marketCap - a.marketCap)
         .slice(0, 10);
 
@@ -343,6 +341,7 @@ export default function Dashboard() {
       return false;
     }
   }, []);
+
   // ============== Historical & Ticker Data ==============
   const fetchHistoricalDataForCurrency = useCallback(
     async (symbol: string): Promise<KlineData[]> => {
@@ -481,12 +480,10 @@ export default function Dashboard() {
       const latestPrice = priceBufferRef.current;
       const now = Date.now();
 
-      // Update displayed price
       setCryptoData((prev) =>
         prev ? { ...prev, price: latestPrice } : { price: latestPrice }
       );
 
-      // Add new chart point if an hour has passed
       const hourElapsed = now - lastChartUpdateRef.current >= HOUR_IN_MS;
       if (hourElapsed) {
         lastChartUpdateRef.current = now;
@@ -533,10 +530,8 @@ export default function Dashboard() {
         console.log("WebSocket connected");
         setWsConnected(true);
 
-        // Subscribe to top currencies
         ws.send(JSON.stringify(MULTI_SUBSCRIBE_MESSAGE));
 
-        // Subscribe specifically to the selected currency
         const CURRENCY_SUBSCRIBE_MESSAGE = {
           action: "SUBSCRIBE",
           type: "index_cc_v1_latest_tick",
@@ -558,7 +553,6 @@ export default function Dashboard() {
             const currencyPair = msg.INSTRUMENT;
             const price = msg.VALUE;
 
-            // If it's the selected currency
             if (currencyPair === `${symbol}-USD`) {
               priceBufferRef.current = price;
               messageCountRef.current += 1;
@@ -571,7 +565,6 @@ export default function Dashboard() {
               }
             }
 
-            // Update top currencies list no matter which instrument
             const msgSymbol = currencyPair.split("-")[0];
             setTopCurrencies((prev) =>
               prev.map((curr) =>
@@ -605,11 +598,9 @@ export default function Dashboard() {
         setLoading(true);
         setError(null);
 
-        // Historical
         const historical = await fetchHistoricalDataForCurrency(symbol);
         setChartData(historical);
 
-        // Ticker
         const ticker = await fetchTickerDataForCurrency(symbol);
         setCryptoData(ticker);
 
@@ -630,7 +621,7 @@ export default function Dashboard() {
     ]
   );
 
-  // 2. Add a function to fetch news from CryptoCompare
+  // 2. Fetch news from CryptoCompare
   const fetchLatestNews = useCallback(async () => {
     try {
       setLoadingNews(true);
@@ -642,7 +633,6 @@ export default function Dashboard() {
         throw new Error("Invalid news data format from API");
       }
 
-      // Transform news articles
       const newsData = resp.data.Data.map((item: any) => ({
         id: item.id,
         title: item.title,
@@ -667,13 +657,12 @@ export default function Dashboard() {
     }
   }, []);
 
-  // 4. Update the initialization use effect to also fetch news
+  // 4. Update initialization to fetch news as well
   useEffect(() => {
     fetchTopCurrencies().then(() => {
       initializeDashboardForCurrency("BTC");
     });
 
-    // Add this line to fetch news articles
     fetchLatestNews();
 
     return () => {
@@ -730,7 +719,7 @@ export default function Dashboard() {
     }
   }, [fetchTickerDataForCurrency, selectedCurrency]);
 
-  // ===== Zoom/Pan via Mouse & Touch (omitted some repeated commentary) =====
+  // ===== Zoom/Pan via Mouse & Touch =====
   const handleTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       if (event.touches.length === 2) {
@@ -772,7 +761,6 @@ export default function Dashboard() {
 
   const handleTouchMove = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
-      // Pinch
       if (event.touches.length === 2) {
         const t1 = event.touches[0];
         const t2 = event.touches[1];
@@ -801,7 +789,6 @@ export default function Dashboard() {
           touchState.initialDomains.y[1] + yRange * (1 - zoomFactor) * yPercent,
         ];
 
-        // Basic limit for zoom out
         if (zoomFactor > 1) {
           const fullXDomain = [0, chartData.length - 1];
           const fullYDomain = [
@@ -823,9 +810,7 @@ export default function Dashboard() {
           yDomain: newYDomain,
           isZoomed: true,
         });
-      }
-      // Pan
-      else if (
+      } else if (
         event.touches.length === 1 &&
         panState.isPanning &&
         zoomState.isZoomed
@@ -856,7 +841,6 @@ export default function Dashboard() {
           currentYDomain[1] + yShift,
         ];
 
-        // Bound checks
         const fullXDomain = [0, chartData.length - 1];
         if (newXDomain[0] < fullXDomain[0]) {
           const overflow = fullXDomain[0] - newXDomain[0];
@@ -973,15 +957,12 @@ export default function Dashboard() {
     };
   }, [panState.isPanning]);
 
-  // ====== A small Pie Chart to show distribution (Portfolio Distribution) ======
+  // ====== Portfolio Distribution and Bot Advanced Settings ======
   const portfolioDistributionData = openPositions.map((pos) => ({
     name: pos.symbol,
     value: pos.amount,
   }));
 
-  // const COLORS = ["#f7931a", "#627eea", "#ed4b2a", "#f4c430", "#fee440"];
-
-  // Add these new state variables with the other bot-related states:
   const [botRiskLevel, setBotRiskLevel] = useState<number>(50);
   const [botTradesPerDay, setBotTradesPerDay] = useState<number>(8);
   const [botSuccessRate, setBotSuccessRate] = useState<number>(67);
@@ -989,13 +970,10 @@ export default function Dashboard() {
   const [botDCAEnabled, setBotDCAEnabled] = useState<boolean>(true);
   const [botShowAdvanced, setBotShowAdvanced] = useState<boolean>(false);
 
-  // Add this function before the return statement (around line 600)
-  // Generate dummy portfolio history data based on date range
   const generatePortfolioHistory = useCallback(
     (range: string) => {
       setPortfolioChartLoading(true);
 
-      // Define parameters based on the selected range
       let dataPoints: number;
       let startValue: number;
       let volatility: number;
@@ -1008,28 +986,28 @@ export default function Dashboard() {
           startValue = portfolioBalance * 0.98;
           volatility = 0.005;
           startDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
-          dateStep = 60 * 60 * 1000; // 1 hour
+          dateStep = 60 * 60 * 1000;
           break;
         case "1w":
           dataPoints = 7;
           startValue = portfolioBalance * 0.95;
           volatility = 0.01;
           startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-          dateStep = 24 * 60 * 60 * 1000; // 1 day
+          dateStep = 24 * 60 * 60 * 1000;
           break;
         case "1m":
           dataPoints = 30;
           startValue = portfolioBalance * 0.9;
           volatility = 0.02;
           startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-          dateStep = 24 * 60 * 60 * 1000; // 1 day
+          dateStep = 24 * 60 * 60 * 1000;
           break;
         case "1y":
           dataPoints = 12;
           startValue = portfolioBalance * 0.7;
           volatility = 0.05;
           startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
-          dateStep = 30 * 24 * 60 * 60 * 1000; // ~1 month
+          dateStep = 30 * 24 * 60 * 60 * 1000;
           break;
         case "all":
         default:
@@ -1037,22 +1015,18 @@ export default function Dashboard() {
           startValue = portfolioBalance * 0.4;
           volatility = 0.07;
           startDate = new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000);
-          dateStep = 45 * 24 * 60 * 60 * 1000; // ~1.5 months
+          dateStep = 45 * 24 * 60 * 60 * 1000;
           break;
       }
 
-      // Generate data
       const data = [];
       let currentValue = startValue;
 
       for (let i = 0; i < dataPoints; i++) {
         const date = new Date(startDate.getTime() + i * dateStep);
-
-        // Random walk with upward bias
         const change = (Math.random() - 0.4) * volatility * currentValue;
         currentValue += change;
 
-        // Make sure we end at the current portfolio balance
         if (i === dataPoints - 1) {
           currentValue = portfolioBalance;
         }
@@ -1073,783 +1047,502 @@ export default function Dashboard() {
     [portfolioBalance]
   );
 
-  // Add this useEffect to generate data when range changes
   useEffect(() => {
     generatePortfolioHistory(portfolioDateRange);
   }, [portfolioDateRange, generatePortfolioHistory]);
 
   // ============== Render ==============
   return (
-    <>
-      <style>{`
-      html, body {
-        scrollbar-width: none; /* Firefox */
-        -ms-overflow-style: none; /* IE and Edge */
-        overflow-x: hidden;
-      }
-      
-      html::-webkit-scrollbar, 
-      body::-webkit-scrollbar {
-        display: none; /* Chrome, Safari, Opera */
-      }
+    <SidebarProvider defaultOpen={true}>
+      <AppSidebar />
+      <SidebarInset>
+        {/* Add the SidebarRail with absolute positioning */}
+        <SidebarRail className="absolute top-4 left-4" />
 
-      /* Alien moon style for the loading text */
-      @keyframes glow {
-        0%, 100% { text-shadow: 0 0 10px rgba(129, 161, 255, 0.7), 0 0 20px rgba(129, 161, 255, 0.5), 0 0 30px rgba(129, 161, 255, 0.3); }
-        50% { text-shadow: 0 0 15px rgba(129, 161, 255, 0.9), 0 0 25px rgba(129, 161, 255, 0.7), 0 0 35px rgba(129, 161, 255, 0.5); }
-      }
-      
-      .alien-text {
-        font-family: "Space Mono", monospace;
-        letter-spacing: 0.4em;
-        font-weight: 800;
-        text-transform: uppercase;
-        animation: glow 2s ease-in-out infinite;
-        background-clip: text;
-      }
+        <style>{`
+        html, body {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+          overflow-x: hidden;
+        }
+        html::-webkit-scrollbar, 
+        body::-webkit-scrollbar {
+          display: none;
+        }
+        @keyframes glow {
+          0%, 100% { text-shadow: 0 0 10px rgba(129, 161, 255, 0.7), 0 0 20px rgba(129, 161, 255, 0.5), 0 0 30px rgba(129, 161, 255, 0.3); }
+          50% { text-shadow: 0 0 15px rgba(129, 161, 255, 0.9), 0 0 25px rgba(129, 161, 255, 0.7), 0 0 35px rgba(129, 161, 255, 0.5); }
+        }
+        .alien-text {
+          font-family: "Space Mono", monospace;
+          letter-spacing: 0.4em;
+          font-weight: 800;
+          text-transform: uppercase;
+          animation: glow 2s ease-in-out infinite;
+          background-clip: text;
+        }
+        .dark .alien-text {
+          color: rgba(200, 220, 255, 0.9);
+        }
+        .alien-text {
+          color: rgba(60, 90, 150, 0.9);
+        }
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          backdrop-filter: blur(5px);
+          transition: opacity 0.3s ease;
+        }
+        .dark .loading-overlay {
+          background-color: rgba(13, 17, 23, 0.8);
+        }
+        .light .loading-overlay {
+          background-color: rgba(255, 255, 255, 0.8);
+        }
+      `}</style>
 
-      /* Dark theme styles */
-      .dark .alien-text {
-        color: rgba(200, 220, 255, 0.9);
-      }
-      
-      /* Light theme styles */
-      .alien-text {
-        color: rgba(60, 90, 150, 0.9);
-      }
-
-      .loading-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 9999;
-        backdrop-filter: blur(5px);
-        transition: opacity 0.3s ease;
-      }
-      
-      .dark .loading-overlay {
-        background-color: rgba(13, 17, 23, 0.8);
-      }
-      
-      .light .loading-overlay {
-        background-color: rgba(255, 255, 255, 0.8);
-      }
-    `}</style>
-
-      {/* Loading Overlay */}
-      {(loading || isLoadingCurrencies) && (
-        <div className="loading-overlay">
-          <div className="text-center">
-            <h1 className="crypto-dashboard-title text-4xl sm:text-6xl md:text-7xl">
-              CRYPTO PILOT
-            </h1>
-            {/* <p className="mt-4 text-muted-foreground">Loading dashboard...</p> */}
-          </div>
-        </div>
-      )}
-
-      <div
-        className="w-full max-w-7xl mx-auto p-2 sm:p-4 overflow-hidden no-scrollbar"
-        style={{ maxWidth: "100%" }}
-      >
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
-          <div>
-            <h1 className="text-3xl font-bold crypto-dashboard-title">
-              Crypto Pilot Dashboard
-            </h1>
-          </div>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
-            <div className="flex items-center gap-2">
-              <div className="text-xs sm:text-sm text-muted-foreground">
-                Last updated: {lastUpdated || "Never"}
-              </div>
-              <span
-                className={cn(
-                  "inline-block w-2 h-2 rounded-full",
-                  wsConnected ? "bg-green-500" : "bg-red-500"
-                )}
-              />
-              <span className="text-xs sm:text-sm">
-                {wsConnected ? "Connected" : "Disconnected"}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={loading}
-              >
-                <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                {loading ? "Loading" : "Refresh"}
-              </Button>
-              <ModeToggle />
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    await fetch(`${config.api.baseUrl}/api/auth/logout`, {
-                      method: "POST",
-                      credentials: "include",
-                    });
-                    // Use the logout function from AuthContext
-                    await logout();
-                    // Redirect to login
-                    navigate("/login");
-                  } catch (error) {
-                    console.error("Logout failed:", error);
-                  }
-                }}
-              >
-                Logout
-              </Button>
+        {(loading || isLoadingCurrencies) && (
+          <div className="loading-overlay">
+            <div className="text-center">
+              <h1 className="crypto-dashboard-title text-4xl sm:text-6xl md:text-7xl">
+                CRYPTO PILOT
+              </h1>
             </div>
           </div>
-        </div>
-
-        {error && (
-          <Card className="mb-4 sm:mb-6 border-red-500">
-            <CardContent className="p-2 sm:p-4 text-red-500 text-sm">
-              {error}
-            </CardContent>
-          </Card>
         )}
 
-        {/* Row 1: Portfolio & Bot */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
-          {/* Portfolio Overview */}
-          <Card className="lg:col-span-1">
-            <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-              <CardTitle className="text-base sm:text-lg">
-                Portfolio Overview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 sm:p-4">
-              <div className="text-sm sm:text-base">
-                <p>
-                  <strong>Balance:</strong> {formatCurrency(portfolioBalance)}
-                </p>
-                <p>
-                  <strong>Overall P/L:</strong>{" "}
-                  <span
-                    className={
-                      portfolioProfitLoss >= 0
-                        ? "text-green-600"
-                        : "text-red-600"
-                    }
-                  >
-                    {portfolioProfitLoss >= 0 ? "+" : "-"}
-                    {Math.abs(portfolioProfitLoss).toFixed(2)}%
-                  </span>
-                </p>
-                <div className="mt-2">
-                  <strong>Open Positions:</strong>
-                  <ul className="list-disc ml-4 mt-1">
-                    {openPositions.map((pos, idx) => (
-                      <li key={idx}>
-                        {pos.symbol}: {pos.amount}
-                      </li>
-                    ))}
-                  </ul>
+        <div
+          className="w-full max-w-7xl mx-auto p-2 sm:p-4 overflow-hidden no-scrollbar"
+          style={{ maxWidth: "100%" }}
+        >
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
+            <div className="pl-10">
+              {" "}
+              {/* Add padding to make room for the button */}
+              <h1 className="text-3xl font-bold crypto-dashboard-title">
+                Crypto Pilot Dashboard
+              </h1>
+            </div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
+              <div className="flex items-center gap-2">
+                <div className="text-xs sm:text-sm text-muted-foreground">
+                  Last updated: {lastUpdated || "Never"}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Bot Status & Strategy */}
-          <Card className="lg:col-span-1">
-            <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-base sm:text-lg">
-                  Bot Status & Strategy
-                </CardTitle>
+                <span
+                  className={cn(
+                    "inline-block w-2 h-2 rounded-full",
+                    wsConnected ? "bg-green-500" : "bg-red-500"
+                  )}
+                />
+                <span className="text-xs sm:text-sm">
+                  {wsConnected ? "Connected" : "Disconnected"}
+                </span>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  onClick={() => setBotShowAdvanced((prev) => !prev)}
-                  className="h-8 w-8 p-0"
+                  onClick={handleRefresh}
+                  disabled={loading}
                 >
-                  <Settings className="h-4 w-4" />
+                  <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  {loading ? "Loading" : "Refresh"}
+                </Button>
+                <ModeToggle />
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await fetch(`${config.api.baseUrl}/api/auth/logout`, {
+                        method: "POST",
+                        credentials: "include",
+                      });
+                      await logout();
+                      navigate("/login");
+                    } catch (error) {
+                      console.error("Logout failed:", error);
+                    }
+                  }}
+                >
+                  Logout
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="p-3 sm:p-4">
-              <div className="space-y-3">
-                <div className="flex items-center">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={cn(
-                        "h-3 w-3 rounded-full",
-                        botActive ? "bg-green-500" : "bg-red-500"
-                      )}
-                    />
-                    <p className="text-sm font-medium">
-                      Status:{" "}
-                      <span
-                        className={
-                          botActive ? "text-green-600" : "text-red-600"
-                        }
-                      >
-                        {botActive ? "Active" : "Paused"}
-                      </span>
-                    </p>
+            </div>
+          </div>
+
+          {error && (
+            <Card className="mb-4 sm:mb-6 border-red-500">
+              <CardContent className="p-2 sm:p-4 text-red-500 text-sm">
+                {error}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Row 1: Portfolio & Bot */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
+            {/* Portfolio Overview */}
+            <Card className="lg:col-span-1">
+              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+                <CardTitle className="text-base sm:text-lg">
+                  Portfolio Overview
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3 sm:p-4">
+                <div className="text-sm sm:text-base">
+                  <p>
+                    <strong>Balance:</strong> {formatCurrency(portfolioBalance)}
+                  </p>
+                  <p>
+                    <strong>Overall P/L:</strong>{" "}
+                    <span
+                      className={
+                        portfolioProfitLoss >= 0
+                          ? "text-green-600"
+                          : "text-red-600"
+                      }
+                    >
+                      {portfolioProfitLoss >= 0 ? "+" : "-"}
+                      {Math.abs(portfolioProfitLoss).toFixed(2)}%
+                    </span>
+                  </p>
+                  <div className="mt-2">
+                    <strong>Open Positions:</strong>
+                    <ul className="list-disc ml-4 mt-1">
+                      {openPositions.map((pos, idx) => (
+                        <li key={idx}>
+                          {pos.symbol}: {pos.amount}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
 
-                <div>
-                  <Label
-                    htmlFor="strategy-select"
-                    className="text-sm font-medium"
+            {/* Bot Status & Strategy */}
+            <Card className="lg:col-span-1">
+              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-base sm:text-lg">
+                    Bot Status & Strategy
+                  </CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setBotShowAdvanced((prev) => !prev)}
+                    className="h-8 w-8 p-0"
                   >
-                    Strategy
-                  </Label>
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-3 sm:p-4">
+                <div className="space-y-3">
+                  <div className="flex items-center">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={cn(
+                          "h-3 w-3 rounded-full",
+                          botActive ? "bg-green-500" : "bg-red-500"
+                        )}
+                      />
+                      <p className="text-sm font-medium">
+                        Status:{" "}
+                        <span
+                          className={
+                            botActive ? "text-green-600" : "text-red-600"
+                          }
+                        >
+                          {botActive ? "Active" : "Paused"}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label
+                      htmlFor="strategy-select"
+                      className="text-sm font-medium"
+                    >
+                      Strategy
+                    </Label>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          id="strategy-select"
+                          variant="outline"
+                          className="mt-1 w-full flex justify-between items-center"
+                        >
+                          {botStrategy || "Select strategy"}
+                          <ChevronDown className="h-4 w-4 opacity-50" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="start"
+                        className="w-[580px] h-auto"
+                      >
+                        <DropdownMenuItem
+                          onClick={() => setBotStrategy("Aggressive Growth")}
+                        >
+                          Aggressive Growth
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setBotStrategy("Conservative")}
+                        >
+                          Conservative
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setBotStrategy("Balanced")}
+                        >
+                          Balanced
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setBotStrategy("DCA")}>
+                          Dollar-Cost Averaging
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setBotStrategy("Trend Following")}
+                        >
+                          Trend Following
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-sm font-medium mb-2">Bot Performance</p>
+                    <div className="space-y-2">
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span>Success Rate</span>
+                          <span className="font-medium">{botSuccessRate}%</span>
+                        </div>
+                        <Progress value={botSuccessRate} className="h-1.5" />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span>Avg. Trades/Day</span>
+                          <span className="font-medium">{botTradesPerDay}</span>
+                        </div>
+                        <Progress
+                          value={botTradesPerDay * 5}
+                          className="h-1.5"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {botShowAdvanced && (
+                    <div className="pt-2 border-t">
+                      <p className="text-sm font-medium mb-2">
+                        Advanced Settings
+                      </p>
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <Label htmlFor="risk-level" className="text-xs">
+                              Risk Level
+                            </Label>
+                            <span className="text-xs font-medium">
+                              {botRiskLevel}%
+                            </span>
+                          </div>
+                          <Slider
+                            id="risk-level"
+                            min={10}
+                            max={90}
+                            step={10}
+                            value={[botRiskLevel]}
+                            onValueChange={(value) => setBotRiskLevel(value[0])}
+                          />
+                          {botRiskLevel > 70 && (
+                            <div className="flex items-center mt-1 text-amber-600 text-[10px] gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              <span>
+                                High risk settings may lead to increased
+                                volatility
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-1">
+                            <Label htmlFor="auto-rebalance" className="text-xs">
+                              Auto-Rebalance
+                            </Label>
+                            <span className="text-[10px] text-muted-foreground">
+                              Maintains target allocation
+                            </span>
+                          </div>
+                          <div
+                            className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
+                            data-state={
+                              botAutoRebalance ? "checked" : "unchecked"
+                            }
+                            onClick={() => setBotAutoRebalance((prev) => !prev)}
+                          >
+                            <span
+                              className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
+                              data-state={
+                                botAutoRebalance ? "checked" : "unchecked"
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-1">
+                            <Label htmlFor="dca-enabled" className="text-xs">
+                              DCA Enabled
+                            </Label>
+                            <span className="text-[10px] text-muted-foreground">
+                              Dollar-cost averaging
+                            </span>
+                          </div>
+                          <div
+                            className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
+                            data-state={botDCAEnabled ? "checked" : "unchecked"}
+                            onClick={() => setBotDCAEnabled((prev) => !prev)}
+                          >
+                            <span
+                              className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
+                              data-state={
+                                botDCAEnabled ? "checked" : "unchecked"
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-3">
+                    <Button
+                      variant={botActive ? "destructive" : "default"}
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setBotActive((prev) => !prev)}
+                    >
+                      {botActive ? "Pause Bot" : "Activate Bot"}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Portfolio Value Chart */}
+            <Card className="lg:col-span-1">
+              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-base sm:text-lg">
+                    Portfolio Value
+                  </CardTitle>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
-                        id="strategy-select"
                         variant="outline"
-                        className="mt-1 w-full flex justify-between items-center"
+                        className="h-8 w-[120px] flex justify-between items-center"
                       >
-                        {botStrategy || "Select strategy"}
+                        {portfolioDateRange}
                         <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="start"
-                      className="w-[580px] h-auto"
-                    >
+                    <DropdownMenuContent>
                       <DropdownMenuItem
-                        onClick={() => setBotStrategy("Aggressive Growth")}
+                        onClick={() => setPortfolioDateRange("24h")}
                       >
-                        Aggressive Growth
+                        24h
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => setBotStrategy("Conservative")}
+                        onClick={() => setPortfolioDateRange("1w")}
                       >
-                        Conservative
+                        1 Week
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => setBotStrategy("Balanced")}
+                        onClick={() => setPortfolioDateRange("1m")}
                       >
-                        Balanced
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setBotStrategy("DCA")}>
-                        Dollar-Cost Averaging
+                        1 Month
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => setBotStrategy("Trend Following")}
+                        onClick={() => setPortfolioDateRange("1y")}
                       >
-                        Trend Following
+                        1 Year
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setPortfolioDateRange("all")}
+                      >
+                        All Time
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-
-                {/* Bot performance metrics */}
-                <div className="pt-2">
-                  <p className="text-sm font-medium mb-2">Bot Performance</p>
-                  <div className="space-y-2">
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>Success Rate</span>
-                        <span className="font-medium">{botSuccessRate}%</span>
-                      </div>
-                      <Progress value={botSuccessRate} className="h-1.5" />
+              </CardHeader>
+              <CardContent className="p-3 sm:p-4 flex justify-center">
+                <div style={{ width: "100%", height: 200 }}>
+                  {portfolioChartLoading ? (
+                    <div className="flex items-center justify-center h-full">
+                      <p className="text-sm text-muted-foreground">
+                        Loading chart data...
+                      </p>
                     </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>Avg. Trades/Day</span>
-                        <span className="font-medium">{botTradesPerDay}</span>
-                      </div>
-                      <Progress value={botTradesPerDay * 5} className="h-1.5" />
-                    </div>
-                  </div>
-                </div>
-
-                {botShowAdvanced && (
-                  <div className="pt-2 border-t">
-                    <p className="text-sm font-medium mb-2">
-                      Advanced Settings
-                    </p>
-
-                    <div className="space-y-4">
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <Label htmlFor="risk-level" className="text-xs">
-                            Risk Level
-                          </Label>
-                          <span className="text-xs font-medium">
-                            {botRiskLevel}%
-                          </span>
-                        </div>
-                        <Slider
-                          id="risk-level"
-                          min={10}
-                          max={90}
-                          step={10}
-                          value={[botRiskLevel]}
-                          onValueChange={(value) => setBotRiskLevel(value[0])}
-                        />
-                        {botRiskLevel > 70 && (
-                          <div className="flex items-center mt-1 text-amber-600 text-[10px] gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            <span>
-                              High risk settings may lead to increased
-                              volatility
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col gap-1">
-                          <Label htmlFor="auto-rebalance" className="text-xs">
-                            Auto-Rebalance
-                          </Label>
-                          <span className="text-[10px] text-muted-foreground">
-                            Maintains target allocation
-                          </span>
-                        </div>
-                        <div
-                          className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
-                          data-state={
-                            botAutoRebalance ? "checked" : "unchecked"
-                          }
-                          onClick={() => setBotAutoRebalance((prev) => !prev)}
-                        >
-                          <span
-                            className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
-                            data-state={
-                              botAutoRebalance ? "checked" : "unchecked"
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col gap-1">
-                          <Label htmlFor="dca-enabled" className="text-xs">
-                            DCA Enabled
-                          </Label>
-                          <span className="text-[10px] text-muted-foreground">
-                            Dollar-cost averaging
-                          </span>
-                        </div>
-                        <div
-                          className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
-                          data-state={botDCAEnabled ? "checked" : "unchecked"}
-                          onClick={() => setBotDCAEnabled((prev) => !prev)}
-                        >
-                          <span
-                            className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
-                            data-state={botDCAEnabled ? "checked" : "unchecked"}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-3">
-                  <Button
-                    variant={botActive ? "destructive" : "default"}
-                    size="sm"
-                    className="w-full"
-                    onClick={() => setBotActive((prev) => !prev)}
-                  >
-                    {botActive ? "Pause Bot" : "Activate Bot"}
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Portfolio Value Chart */}
-          <Card className="lg:col-span-1">
-            <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-base sm:text-lg">
-                  Portfolio Value
-                </CardTitle>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="h-8 w-[120px] flex justify-between items-center"
-                    >
-                      {portfolioDateRange}
-                      <ChevronDown className="h-4 w-4 opacity-50" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem
-                      onClick={() => setPortfolioDateRange("24h")}
-                    >
-                      24h
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setPortfolioDateRange("1w")}
-                    >
-                      1 Week
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setPortfolioDateRange("1m")}
-                    >
-                      1 Month
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setPortfolioDateRange("1y")}
-                    >
-                      1 Year
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setPortfolioDateRange("all")}
-                    >
-                      All Time
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </CardHeader>
-            <CardContent className="p-3 sm:p-4 flex justify-center">
-              <div style={{ width: "100%", height: 200 }}>
-                {portfolioChartLoading ? (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-sm text-muted-foreground">
-                      Loading chart data...
-                    </p>
-                  </div>
-                ) : (
-                  <ResponsiveContainer>
-                    <AreaChart data={portfolioHistory}>
-                      <defs>
-                        <linearGradient
-                          id="portfolioGradient"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="5%"
-                            stopColor="#8884d8"
-                            stopOpacity={0.8}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor="#8884d8"
-                            stopOpacity={0.1}
-                          />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        vertical={false}
-                        opacity={0.2}
-                      />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 10 }}
-                        allowDataOverflow
-                        minTickGap={15}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 10 }}
-                        width={60}
-                        tickFormatter={(val) => formatCurrency(val, true)}
-                      />
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (active && payload && payload.length) {
-                            return (
-                              <div className="bg-background/95 backdrop-blur-sm border rounded shadow-lg p-3 text-xs">
-                                <div className="font-bold mb-1">{label}</div>
-                                <div className="text-muted-foreground mb-1">
-                                  {payload[0].payload.time}
-                                </div>
-                                <div className="font-medium">
-                                  Value:{" "}
-                                  {formatCurrency(payload[0].value as number)}
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="value"
-                        stroke="#8884d8"
-                        fill="url(#portfolioGradient)"
-                        strokeWidth={2}
-                        isAnimationActive={true}
-                        animationDuration={1000}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Row 2: Ticker/Chart & Top Crypto */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-          {/* Main chart side (2/3) */}
-          <div className="lg:col-span-2">
-            {/* Chart with integrated ticker info */}
-            {chartData.length > 0 && (
-              <Card className="mb-3 sm:mb-4">
-                <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-                  <div className="flex flex-col sm:flex-row justify-between gap-2 w-full">
-                    <div className="flex flex-col gap-1">
-                      <CardTitle className="text-base sm:text-lg">
-                        {selectedCurrency}/USD Chart
-                      </CardTitle>
-                      {cryptoData && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm sm:text-base font-semibold">
-                            {formatCurrency(cryptoData.price)}
-                          </span>
-                          {/* Add 24h change if available */}
-                          {topCurrencies.find(
-                            (c) => c.symbol === selectedCurrency
-                          )?.change24h !== undefined && (
-                            <span
-                              className={cn(
-                                "text-xs rounded-md px-1.5 py-0.5 font-medium",
-                                (topCurrencies.find(
-                                  (c) => c.symbol === selectedCurrency
-                                )?.change24h || 0) >= 0
-                                  ? "bg-green-500/10 text-green-600"
-                                  : "bg-red-500/10 text-red-600"
-                              )}
-                            >
-                              {(topCurrencies.find(
-                                (c) => c.symbol === selectedCurrency
-                              )?.change24h || 0) >= 0
-                                ? "+"
-                                : ""}
-                              {(
-                                topCurrencies.find(
-                                  (c) => c.symbol === selectedCurrency
-                                )?.change24h || 0
-                              ).toFixed(2)}
-                              %
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs text-muted-foreground">
-                        Last updated: {lastUpdated || "Never"}
-                      </span>
-                      {zoomState.isZoomed && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleResetZoom}
-                          className="text-xs"
-                        >
-                          Reset Zoom
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-2 sm:p-4">
-                  {/* Chart container div stays the same */}
-                  <div
-                    ref={chartContainerRef}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseLeave}
-                    onTouchStart={handleTouchStart}
-                    onTouchMove={handleTouchMove}
-                    onTouchEnd={handleTouchEnd}
-                    style={{
-                      width: "100%",
-                      height: 250,
-                      touchAction: "none",
-                      cursor: panState.isPanning
-                        ? "grabbing"
-                        : zoomState.isZoomed
-                        ? "grab"
-                        : "default",
-                      userSelect: "none",
-                      overflow: "hidden", // Add this to prevent chart overflow
-                    }}
-                  >
-                    <ResponsiveContainer width="100%" height={250}>
-                      <LineChart
-                        data={
-                          zoomState.isZoomed && minuteData.length > 0
-                            ? minuteData
-                            : chartData
-                        }
-                        margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
-                      >
+                  ) : (
+                    <ResponsiveContainer>
+                      <AreaChart data={portfolioHistory}>
+                        <defs>
+                          <linearGradient
+                            id="portfolioGradient"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#8884d8"
+                              stopOpacity={0.8}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#8884d8"
+                              stopOpacity={0.1}
+                            />
+                          </linearGradient>
+                        </defs>
                         <CartesianGrid
                           strokeDasharray="3 3"
-                          stroke="#aaa"
+                          vertical={false}
                           opacity={0.2}
                         />
                         <XAxis
-                          dataKey="time"
-                          tick={{ fontSize: 9 }}
-                          domain={zoomState.xDomain}
+                          dataKey="date"
+                          tick={{ fontSize: 10 }}
                           allowDataOverflow
-                          interval="preserveStartEnd"
                           minTickGap={15}
                         />
                         <YAxis
-                          domain={zoomState.yDomain || ["auto", "auto"]}
-                          allowDataOverflow
-                          tick={{ fontSize: 9 }}
-                          tickFormatter={(val: number) => val.toFixed(0)}
-                          width={35}
+                          tick={{ fontSize: 10 }}
+                          width={60}
+                          tickFormatter={(val) => formatCurrency(val, true)}
                         />
-                        <Line
-                          type="monotone"
-                          dataKey="close"
-                          stroke="#f7931a"
-                          strokeWidth={2}
-                          dot={false}
-                          activeDot={{ r: 6 }}
-                          // enable animation
-                          isAnimationActive={true}
-                          animationBegin={0}
-                          animationDuration={2000}
-                          animationEasing="ease-in-out"
-                        />
-                        {/* Enhanced Tooltip */}
                         <Tooltip
-                          content={({ active, payload }) => {
+                          content={({ active, payload, label }) => {
                             if (active && payload && payload.length) {
-                              const data = payload[0].payload;
-
-                              // Format the date for better display
-                              const timestamp = data.timestamp * 1000;
-                              const date = new Date(timestamp);
-                              const formattedDate = date.toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                }
-                              );
-                              const formattedTime = date.toLocaleTimeString(
-                                "en-US",
-                                {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                }
-                              );
-
-                              // Calculate price change if previous point data is available
-                              let priceChangePercent = null;
-                              const currentChartData =
-                                zoomState.isZoomed && minuteData.length > 0
-                                  ? minuteData
-                                  : chartData;
-
-                              const dataIndex = currentChartData.findIndex(
-                                (item) => item.timestamp === data.timestamp
-                              );
-
-                              if (
-                                dataIndex > 0 &&
-                                currentChartData[dataIndex - 1]
-                              ) {
-                                const prevClose =
-                                  currentChartData[dataIndex - 1].close;
-                                const currentClose = data.close;
-                                priceChangePercent =
-                                  ((currentClose - prevClose) / prevClose) *
-                                  100;
-                              }
-
                               return (
                                 <div className="bg-background/95 backdrop-blur-sm border rounded shadow-lg p-3 text-xs">
-                                  <div className="font-bold mb-1 text-sm">
-                                    {selectedCurrency}/USD
+                                  <div className="font-bold mb-1">{label}</div>
+                                  <div className="text-muted-foreground mb-1">
+                                    {payload[0].payload.time}
                                   </div>
-                                  <div className="text-muted-foreground mb-2">
-                                    {formattedDate} at {formattedTime}
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                                    <div>Price:</div>
-                                    <div className="text-right font-medium">
-                                      {formatCurrency(data.close)}
-                                    </div>
-
-                                    {data.open !== undefined && (
-                                      <>
-                                        <div>Open:</div>
-                                        <div className="text-right">
-                                          {formatCurrency(data.open)}
-                                        </div>
-                                      </>
-                                    )}
-
-                                    {data.high !== undefined && (
-                                      <>
-                                        <div>High:</div>
-                                        <div className="text-right">
-                                          {formatCurrency(data.high)}
-                                        </div>
-                                      </>
-                                    )}
-
-                                    {data.low !== undefined && (
-                                      <>
-                                        <div>Low:</div>
-                                        <div className="text-right">
-                                          {formatCurrency(data.low)}
-                                        </div>
-                                      </>
-                                    )}
-
-                                    {priceChangePercent !== null && (
-                                      <>
-                                        <div>Change:</div>
-                                        <div
-                                          className={`text-right ${
-                                            priceChangePercent >= 0
-                                              ? "text-green-600"
-                                              : "text-red-600"
-                                          }`}
-                                        >
-                                          {priceChangePercent >= 0 ? "+" : ""}
-                                          {priceChangePercent.toFixed(2)}%
-                                        </div>
-                                      </>
-                                    )}
-
-                                    {data.volume !== undefined && (
-                                      <>
-                                        <div>Volume:</div>
-                                        <div className="text-right">
-                                          {formatCurrency(data.volume, true)}
-                                        </div>
-                                      </>
-                                    )}
-
-                                    {data.isMinuteData && (
-                                      <div className="col-span-2 mt-1 text-[10px] text-muted-foreground">
-                                        Minute resolution data
-                                      </div>
-                                    )}
+                                  <div className="font-medium">
+                                    Value:{" "}
+                                    {formatCurrency(payload[0].value as number)}
                                   </div>
                                 </div>
                               );
@@ -1857,333 +1550,588 @@ export default function Dashboard() {
                             return null;
                           }}
                         />
-                        {isLoadingMinuteData && (
-                          <text
-                            x="50%"
-                            y="50%"
-                            textAnchor="middle"
-                            fill="currentColor"
-                            dy=".3em"
-                            fontSize="14"
-                            fontWeight="bold"
-                          >
-                            Loading minute data...
-                          </text>
-                        )}
-                      </LineChart>
+                        <Area
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#8884d8"
+                          fill="url(#portfolioGradient)"
+                          strokeWidth={2}
+                          isAnimationActive={true}
+                          animationDuration={1000}
+                        />
+                      </AreaChart>
                     </ResponsiveContainer>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Row 2: Ticker/Chart & Top Crypto */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+            {/* Main chart side */}
+            <div className="lg:col-span-2">
+              {chartData.length > 0 && (
+                <Card className="mb-3 sm:mb-4">
+                  <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+                    <div className="flex flex-col sm:flex-row justify-between gap-2 w-full">
+                      <div className="flex flex-col gap-1">
+                        <CardTitle className="text-base sm:text-lg">
+                          {selectedCurrency}/USD Chart
+                        </CardTitle>
+                        {cryptoData && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm sm:text-base font-semibold">
+                              {formatCurrency(cryptoData.price)}
+                            </span>
+                            {topCurrencies.find(
+                              (c) => c.symbol === selectedCurrency
+                            )?.change24h !== undefined && (
+                              <span
+                                className={cn(
+                                  "text-xs rounded-md px-1.5 py-0.5 font-medium",
+                                  (topCurrencies.find(
+                                    (c) => c.symbol === selectedCurrency
+                                  )?.change24h || 0) >= 0
+                                    ? "bg-green-500/10 text-green-600"
+                                    : "bg-red-500/10 text-red-600"
+                                )}
+                              >
+                                {(topCurrencies.find(
+                                  (c) => c.symbol === selectedCurrency
+                                )?.change24h || 0) >= 0
+                                  ? "+"
+                                  : ""}
+                                {(
+                                  topCurrencies.find(
+                                    (c) => c.symbol === selectedCurrency
+                                  )?.change24h || 0
+                                ).toFixed(2)}
+                                %
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs text-muted-foreground">
+                          Last updated: {lastUpdated || "Never"}
+                        </span>
+                        {zoomState.isZoomed && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleResetZoom}
+                            className="text-xs"
+                          >
+                            Reset Zoom
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-2 sm:p-4">
+                    <div
+                      ref={chartContainerRef}
+                      onMouseDown={handleMouseDown}
+                      onMouseMove={handleMouseMove}
+                      onMouseUp={handleMouseUp}
+                      onMouseLeave={handleMouseLeave}
+                      onTouchStart={handleTouchStart}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
+                      style={{
+                        width: "100%",
+                        height: 250,
+                        touchAction: "none",
+                        cursor: panState.isPanning
+                          ? "grabbing"
+                          : zoomState.isZoomed
+                          ? "grab"
+                          : "default",
+                        userSelect: "none",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <ResponsiveContainer width="100%" height={250}>
+                        <LineChart
+                          data={
+                            zoomState.isZoomed && minuteData.length > 0
+                              ? minuteData
+                              : chartData
+                          }
+                          margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="#aaa"
+                            opacity={0.2}
+                          />
+                          <XAxis
+                            dataKey="time"
+                            tick={{ fontSize: 9 }}
+                            domain={zoomState.xDomain}
+                            allowDataOverflow
+                            interval="preserveStartEnd"
+                            minTickGap={15}
+                          />
+                          <YAxis
+                            domain={zoomState.yDomain || ["auto", "auto"]}
+                            allowDataOverflow
+                            tick={{ fontSize: 9 }}
+                            tickFormatter={(val: number) => val.toFixed(0)}
+                            width={35}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="close"
+                            stroke="#f7931a"
+                            strokeWidth={2}
+                            dot={false}
+                            activeDot={{ r: 6 }}
+                            isAnimationActive={true}
+                            animationBegin={0}
+                            animationDuration={2000}
+                            animationEasing="ease-in-out"
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                const timestamp = data.timestamp * 1000;
+                                const date = new Date(timestamp);
+                                const formattedDate = date.toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  }
+                                );
+                                const formattedTime = date.toLocaleTimeString(
+                                  "en-US",
+                                  {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  }
+                                );
+
+                                let priceChangePercent = null;
+                                const currentChartData =
+                                  zoomState.isZoomed && minuteData.length > 0
+                                    ? minuteData
+                                    : chartData;
+                                const dataIndex = currentChartData.findIndex(
+                                  (item) => item.timestamp === data.timestamp
+                                );
+                                if (
+                                  dataIndex > 0 &&
+                                  currentChartData[dataIndex - 1]
+                                ) {
+                                  const prevClose =
+                                    currentChartData[dataIndex - 1].close;
+                                  const currentClose = data.close;
+                                  priceChangePercent =
+                                    ((currentClose - prevClose) / prevClose) *
+                                    100;
+                                }
+
+                                return (
+                                  <div className="bg-background/95 backdrop-blur-sm border rounded shadow-lg p-3 text-xs">
+                                    <div className="font-bold mb-1 text-sm">
+                                      {selectedCurrency}/USD
+                                    </div>
+                                    <div className="text-muted-foreground mb-2">
+                                      {formattedDate} at {formattedTime}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                      <div>Price:</div>
+                                      <div className="text-right font-medium">
+                                        {formatCurrency(data.close)}
+                                      </div>
+                                      {data.open !== undefined && (
+                                        <>
+                                          <div>Open:</div>
+                                          <div className="text-right">
+                                            {formatCurrency(data.open)}
+                                          </div>
+                                        </>
+                                      )}
+                                      {data.high !== undefined && (
+                                        <>
+                                          <div>High:</div>
+                                          <div className="text-right">
+                                            {formatCurrency(data.high)}
+                                          </div>
+                                        </>
+                                      )}
+                                      {data.low !== undefined && (
+                                        <>
+                                          <div>Low:</div>
+                                          <div className="text-right">
+                                            {formatCurrency(data.low)}
+                                          </div>
+                                        </>
+                                      )}
+                                      {priceChangePercent !== null && (
+                                        <>
+                                          <div>Change:</div>
+                                          <div
+                                            className={`text-right ${
+                                              priceChangePercent >= 0
+                                                ? "text-green-600"
+                                                : "text-red-600"
+                                            }`}
+                                          >
+                                            {priceChangePercent >= 0 ? "+" : ""}
+                                            {priceChangePercent.toFixed(2)}%
+                                          </div>
+                                        </>
+                                      )}
+                                      {data.volume !== undefined && (
+                                        <>
+                                          <div>Volume:</div>
+                                          <div className="text-right">
+                                            {formatCurrency(data.volume, true)}
+                                          </div>
+                                        </>
+                                      )}
+                                      {data.isMinuteData && (
+                                        <div className="col-span-2 mt-1 text-[10px] text-muted-foreground">
+                                          Minute resolution data
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          {isLoadingMinuteData && (
+                            <text
+                              x="50%"
+                              y="50%"
+                              textAnchor="middle"
+                              fill="currentColor"
+                              dy=".3em"
+                              fontSize="14"
+                              fontWeight="bold"
+                            >
+                              Loading minute data...
+                            </text>
+                          )}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="border-t p-2 sm:p-4">
+                    <div className="w-full">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground mb-1 sm:mb-2">
+                        Data from Coindesk API; live updates from CryptoCompare
+                        WebSocket.
+                      </p>
+                    </div>
+                  </CardFooter>
+                </Card>
+              )}
+            </div>
+
+            {/* Top Cryptocurrencies */}
+            <div className="lg:col-span-1 lg:col-start-3 lg:row-span-0 lg:row-start-1">
+              <Card className="h-full">
+                <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+                  <CardTitle className="text-base sm:text-lg">
+                    Top 10 Cryptocurrencies
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-auto max-h-[450px] sm:max-h-[450px]">
+                    <Table className="w-full">
+                      <TableCaption className="text-[10px] sm:text-xs">
+                        Updated in real-time via WebSocket
+                      </TableCaption>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[60px] text-xs">
+                            Symbol
+                          </TableHead>
+                          <TableHead className="text-right text-xs">
+                            Price
+                          </TableHead>
+                          <TableHead className="text-right text-xs hidden sm:table-cell">
+                            Market Cap
+                          </TableHead>
+                          <TableHead className="text-right text-xs">
+                            24h
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {isLoadingCurrencies ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              className="text-center text-xs"
+                            >
+                              Loading...
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          topCurrencies.map((currency) => (
+                            <TableRow
+                              key={currency.symbol}
+                              className={cn(
+                                "cursor-pointer hover:bg-muted/50 transition-colors",
+                                selectedCurrency === currency.symbol &&
+                                  "bg-muted/30"
+                              )}
+                              onClick={() =>
+                                handleCurrencySelect(currency.symbol)
+                              }
+                            >
+                              <TableCell className="font-medium text-xs py-2">
+                                {currency.symbol}
+                              </TableCell>
+                              <TableCell className="text-right text-xs py-2">
+                                {formatCurrency(currency.price)}
+                              </TableCell>
+                              <TableCell className="text-right text-xs py-2 hidden sm:table-cell">
+                                {formatCurrency(currency.marketCap, true)}
+                              </TableCell>
+                              <TableCell className="text-right text-xs py-2">
+                                <div className="flex items-center justify-end gap-1">
+                                  {currency.change24h > 0 ? (
+                                    <ArrowUp className="h-3 w-3 text-green-500" />
+                                  ) : (
+                                    <ArrowDown className="h-3 w-3 text-red-400" />
+                                  )}
+                                  <Badge
+                                    variant={
+                                      currency.change24h > 0
+                                        ? "success"
+                                        : "destructive"
+                                    }
+                                    className={cn(
+                                      "text-[10px] px-1 py-0",
+                                      currency.change24h < 0 &&
+                                        "bg-red-500/10 text-red-400 dark:text-red-400 dark:bg-red-500/20"
+                                    )}
+                                  >
+                                    {Math.abs(currency.change24h).toFixed(1)}%
+                                  </Badge>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
                 </CardContent>
-                <CardFooter className="border-t p-2 sm:p-4">
-                  <div className="w-full">
-                    <p className="text-[10px] sm:text-xs text-muted-foreground mb-1 sm:mb-2">
-                      Data from Coindesk API; live updates from CryptoCompare
-                      WebSocket.
-                    </p>
-                  </div>
-                </CardFooter>
               </Card>
-            )}
+            </div>
           </div>
 
-          {/* Top Cryptocurrencies */}
-          <div className="lg:col-span-1 lg:col-start-3 lg:row-span-0 lg:row-start-1">
-            <Card className="h-full">
-              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
-                <CardTitle className="text-base sm:text-lg">
-                  Top 10 Cryptocurrencies
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-auto max-h-[450px] sm:max-h-[450px]">
-                  <Table className="w-full">
-                    <TableCaption className="text-[10px] sm:text-xs">
-                      Updated in real-time via WebSocket
-                    </TableCaption>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[60px] text-xs">
-                          Symbol
-                        </TableHead>
-                        <TableHead className="text-right text-xs">
-                          Price
-                        </TableHead>
-                        <TableHead className="text-right text-xs hidden sm:table-cell">
-                          Market Cap
-                        </TableHead>
-                        <TableHead className="text-right text-xs">
-                          24h
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {isLoadingCurrencies ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={4}
-                            className="text-center text-xs"
-                          >
-                            Loading...
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        topCurrencies.map((currency) => (
-                          <TableRow
-                            key={currency.symbol}
-                            className={cn(
-                              "cursor-pointer hover:bg-muted/50 transition-colors",
-                              selectedCurrency === currency.symbol &&
-                                "bg-muted/30"
-                            )}
-                            onClick={() =>
-                              handleCurrencySelect(currency.symbol)
-                            }
-                          >
-                            <TableCell className="font-medium text-xs py-2">
-                              {currency.symbol}
-                            </TableCell>
-                            <TableCell className="text-right text-xs py-2">
-                              {formatCurrency(currency.price)}
-                            </TableCell>
-                            <TableCell className="text-right text-xs py-2 hidden sm:table-cell">
-                              {formatCurrency(currency.marketCap, true)}
-                            </TableCell>
-                            <TableCell className="text-right text-xs py-2">
-                              <div className="flex items-center justify-end gap-1">
-                                {currency.change24h > 0 ? (
-                                  <ArrowUp className="h-3 w-3 text-green-500" />
-                                ) : (
-                                  <ArrowDown className="h-3 w-3 text-red-400" />
-                                )}
-                                <Badge
-                                  variant={
-                                    currency.change24h > 0
-                                      ? "success"
-                                      : "destructive"
-                                  }
-                                  className={cn(
-                                    "text-[10px] px-1 py-0",
-                                    currency.change24h < 0 &&
-                                      "bg-red-500/10 text-red-400 dark:text-red-400 dark:bg-red-500/20"
-                                  )}
-                                >
-                                  {Math.abs(currency.change24h).toFixed(1)}%
-                                </Badge>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Row 3: Quick Trade, Recent Trades, Bot Roadmap, News/Tips */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-4">
-          {/* LEFT COLUMN: Quick Trade + Roadmap */}
-          <div className="flex flex-col gap-4">
-            {/* Quick Trade Card */}
-            <Card>
-              <CardHeader className="p-3 sm:p-4 pb-0">
-                <CardTitle className="text-base sm:text-lg">
-                  Quick Trade
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3 sm:p-4">
-                <p className="text-xs sm:text-sm mb-2">
-                  For simplicity, a novice can instantly buy/sell the currently
-                  selected currency.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Button className="w-full sm:w-auto" variant="default">
-                    Buy 0.01 {selectedCurrency}
-                  </Button>
-                  <Button className="w-full sm:w-auto" variant="destructive">
-                    Sell 0.01 {selectedCurrency}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Bot Roadmap - Adjust table for mobile */}
-            <Card>
-              <CardHeader className="p-3 sm:p-4 pb-0">
-                <CardTitle className="text-base sm:text-lg">
-                  Bot Roadmap
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table className="w-full">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-xs whitespace-nowrap">
-                          Date
-                        </TableHead>
-                        <TableHead className="text-xs">Plan</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {botRoadmap.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={2}
-                            className="text-center text-xs py-2"
-                          >
-                            No upcoming actions
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        botRoadmap.map((action) => (
-                          <TableRow key={action.id}>
-                            <TableCell className="text-xs py-2">
-                              {action.date}
-                            </TableCell>
-                            <TableCell className="text-xs py-2">
-                              {action.plan}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* RIGHT COLUMN: Recent Trades + News/Tips */}
-          <div className="flex flex-col gap-4">
-            {/* Recent Trades - Optimize table for mobile */}
-            <Card>
-              <CardHeader className="p-3 sm:p-4 pb-0">
-                <CardTitle className="text-base sm:text-lg">
-                  Recent Trades
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table className="w-full">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-xs whitespace-nowrap">
-                          Time
-                        </TableHead>
-                        <TableHead className="text-xs whitespace-nowrap">
-                          Action
-                        </TableHead>
-                        <TableHead className="text-xs text-right whitespace-nowrap">
-                          Amount
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {recentTrades.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={5}
-                            className="text-center text-xs py-2"
-                          >
-                            No recent trades
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        recentTrades.map((trade) => (
-                          <TableRow key={trade.id}>
-                            <TableCell className="text-xs py-2">
-                              <span
-                                className={
-                                  trade.type === "BUY"
-                                    ? "text-green-600"
-                                    : "text-red-600"
-                                }
-                              >
-                                {trade.type}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-xs py-2">
-                              {trade.symbol}
-                            </TableCell>
-                            <TableCell className="text-right text-xs py-2">
-                              {trade.amount}
-                            </TableCell>
-                            <TableCell className="text-right text-xs py-2">
-                              {formatCurrency(trade.price)}
-                            </TableCell>
-                            <TableCell className="text-right text-xs py-2">
-                              {trade.timestamp}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* News / Educational Tips */}
-            <Card>
-              <CardHeader className="p-3 sm:p-4 pb-0">
-                <CardTitle className="text-base sm:text-lg">
-                  News & Tips
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3 sm:p-4">
-                {loadingNews ? (
-                  <div className="flex justify-center items-center h-[100px]">
-                    <p className="text-sm text-muted-foreground">
-                      Loading news...
-                    </p>
+          {/* Row 3: Quick Trade, Recent Trades, Bot Roadmap, News/Tips */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-4">
+            {/* LEFT COLUMN: Quick Trade + Roadmap */}
+            <div className="flex flex-col gap-4">
+              <Card>
+                <CardHeader className="p-3 sm:p-4 pb-0">
+                  <CardTitle className="text-base sm:text-lg">
+                    Quick Trade
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm mb-2">
+                    For simplicity, a novice can instantly buy/sell the
+                    currently selected currency.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button className="w-full sm:w-auto" variant="default">
+                      Buy 0.01 {selectedCurrency}
+                    </Button>
+                    <Button className="w-full sm:w-auto" variant="destructive">
+                      Sell 0.01 {selectedCurrency}
+                    </Button>
                   </div>
-                ) : newsItems.length === 0 ? (
-                  <p className="text-xs">No news items available</p>
-                ) : (
-                  <div className="h-[250px] sm:h-[300px] overflow-y-auto pr-1 scrollbar-thin">
-                    <ul className="list-none text-xs sm:text-sm space-y-4">
-                      {newsItems.map((item) => (
-                        <li
-                          key={item.id}
-                          className="border-b pb-3 last:border-b-0"
-                        >
-                          <div className="flex gap-2">
-                            {item.imageUrl && (
-                              <div className="hidden sm:block flex-shrink-0">
-                                <img
-                                  src={item.imageUrl}
-                                  alt={item.title}
-                                  className="h-12 w-12 rounded object-cover"
-                                />
-                              </div>
-                            )}
-                            <div>
-                              <a
-                                href={item.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-semibold mb-1 hover:text-primary transition-colors"
-                              >
-                                {item.title}
-                              </a>
-                              <p className="text-muted-foreground text-xs mt-1">
-                                {item.snippet}
-                              </p>
-                              <div className="text-[10px] text-muted-foreground mt-1">
-                                {item.source} · {item.publishedAt}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="p-3 sm:p-4 pb-0">
+                  <CardTitle className="text-base sm:text-lg">
+                    Bot Roadmap
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table className="w-full">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs whitespace-nowrap">
+                            Date
+                          </TableHead>
+                          <TableHead className="text-xs">Plan</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {botRoadmap.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={2}
+                              className="text-center text-xs py-2"
+                            >
+                              No upcoming actions
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          botRoadmap.map((action) => (
+                            <TableRow key={action.id}>
+                              <TableCell className="text-xs py-2">
+                                {action.date}
+                              </TableCell>
+                              <TableCell className="text-xs py-2">
+                                {action.plan}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* RIGHT COLUMN: Recent Trades + News/Tips */}
+            <div className="flex flex-col gap-4">
+              <Card>
+                <CardHeader className="p-3 sm:p-4 pb-0">
+                  <CardTitle className="text-base sm:text-lg">
+                    Recent Trades
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table className="w-full">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs whitespace-nowrap">
+                            Time
+                          </TableHead>
+                          <TableHead className="text-xs whitespace-nowrap">
+                            Action
+                          </TableHead>
+                          <TableHead className="text-xs text-right whitespace-nowrap">
+                            Amount
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {recentTrades.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={5}
+                              className="text-center text-xs py-2"
+                            >
+                              No recent trades
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          recentTrades.map((trade) => (
+                            <TableRow key={trade.id}>
+                              <TableCell className="text-xs py-2">
+                                <span
+                                  className={
+                                    trade.type === "BUY"
+                                      ? "text-green-600"
+                                      : "text-red-600"
+                                  }
+                                >
+                                  {trade.type}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-xs py-2">
+                                {trade.symbol}
+                              </TableCell>
+                              <TableCell className="text-right text-xs py-2">
+                                {trade.amount}
+                              </TableCell>
+                              <TableCell className="text-right text-xs py-2">
+                                {formatCurrency(trade.price)}
+                              </TableCell>
+                              <TableCell className="text-right text-xs py-2">
+                                {trade.timestamp}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="p-3 sm:p-4 pb-0">
+                  <CardTitle className="text-base sm:text-lg">
+                    News & Tips
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-3 sm:p-4">
+                  {loadingNews ? (
+                    <div className="flex justify-center items-center h-[100px]">
+                      <p className="text-sm text-muted-foreground">
+                        Loading news...
+                      </p>
+                    </div>
+                  ) : newsItems.length === 0 ? (
+                    <p className="text-xs">No news items available</p>
+                  ) : (
+                    <div className="h-[250px] sm:h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+                      <ul className="list-none text-xs sm:text-sm space-y-4">
+                        {newsItems.map((item) => (
+                          <li
+                            key={item.id}
+                            className="border-b pb-3 last:border-b-0"
+                          >
+                            <div className="flex gap-2">
+                              {item.imageUrl && (
+                                <div className="hidden sm:block flex-shrink-0">
+                                  <img
+                                    src={item.imageUrl}
+                                    alt={item.title}
+                                    className="h-12 w-12 rounded object-cover"
+                                  />
+                                </div>
+                              )}
+                              <div>
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-semibold mb-1 hover:text-primary transition-colors"
+                                >
+                                  {item.title}
+                                </a>
+                                <p className="text-muted-foreground text-xs mt-1">
+                                  {item.snippet}
+                                </p>
+                                <div className="text-[10px] text-muted-foreground mt-1">
+                                  {item.source} · {item.publishedAt}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
 
@@ -2195,7 +2143,7 @@ export default function Dashboard() {
             research.
           </p>
         </div>
-      </div>
-    </>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
