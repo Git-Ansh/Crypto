@@ -22,6 +22,10 @@ const UserSchema = new mongoose.Schema({
   avatar: {
     type: String,
   },
+  paperBalance: {
+    type: Number,
+    default: 10000, // Default starting balance (e.g., $10,000)
+  },
   createdAt: {
     type: Date,
     default: Date.now,
