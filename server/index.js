@@ -11,34 +11,42 @@ const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 
-// Import Firebase Admin SDK if not already imported
+// Initialize Firebase Admin SDK
 const admin = require("firebase-admin");
 
-// Initialize Firebase Admin SDK if not already initialized
-if (!admin.apps.length) {
-  try {
-    // For debugging
-    console.log("Firebase env vars present:", {
-      projectId: !!process.env.FIREBASE_PROJECT_ID,
-      clientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: !!process.env.FIREBASE_PRIVATE_KEY,
-    });
+// Use environment variables instead of requiring the JSON file
+const firebaseConfig = {
+  type: process.env.FIREBASE_TYPE || "service_account",
+  project_id: process.env.FIREBASE_PROJECT_ID,
+  private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+  private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+  client_email: process.env.FIREBASE_CLIENT_EMAIL,
+  client_id: process.env.FIREBASE_CLIENT_ID,
+  auth_uri:
+    process.env.FIREBASE_AUTH_URI ||
+    "https://accounts.google.com/o/oauth2/auth",
+  token_uri:
+    process.env.FIREBASE_TOKEN_URI || "https://oauth2.googleapis.com/token",
+  auth_provider_x509_cert_url:
+    process.env.FIREBASE_AUTH_PROVIDER_CERT_URL ||
+    "https://www.googleapis.com/oauth2/v1/certs",
+  client_x509_cert_url: process.env.FIREBASE_CLIENT_CERT_URL,
+};
 
-    // Use JSON.parse for the private key if needed
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY
-      ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
-      : undefined;
-
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: privateKey,
-      }),
-    });
-  } catch (error) {
-    console.error("Firebase initialization error:", error.message);
-  }
+// Only initialize if we have the required credentials
+if (
+  process.env.FIREBASE_PROJECT_ID &&
+  process.env.FIREBASE_CLIENT_EMAIL &&
+  process.env.FIREBASE_PRIVATE_KEY
+) {
+  admin.initializeApp({
+    credential: admin.credential.cert(firebaseConfig),
+  });
+  console.log("Firebase Admin SDK initialized");
+} else {
+  console.warn(
+    "Firebase credentials missing, authentication features may not work properly"
+  );
 }
 
 // Try to validate env, but don't crash if it fails in production
@@ -102,13 +110,20 @@ app.use(
   })
 );
 
-// Rate Limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: "Too many requests from this IP, please try again after 15 minutes",
-});
-app.use(limiter);
+// Rate Limiting - only apply strict limits in production
+if (NODE_ENV === "production") {
+  app.use(limiter);
+} else {
+  // In development, use a more lenient rate limiter or none at all
+  console.log("Using development rate limits");
+  const devLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 1000, // Much higher limit for development
+    message:
+      "Too many requests from this IP, please try again after 15 minutes",
+  });
+  app.use(devLimiter);
+}
 
 // MongoDB connection with connection pooling optimized for serverless
 let cachedDb = null;
@@ -139,6 +154,8 @@ async function connectToDatabase() {
 const authRoutes = require("./routes/auth");
 const dashboardRoutes = require("./routes/dashboard");
 const tradesRoutes = require("./routes/trades");
+const portfolioRoutes = require("./routes/portfolio");
+const botConfigRoutes = require("./routes/botConfig");
 
 // Handle database connection before routing
 app.use(async (req, res, next) => {
@@ -155,6 +172,8 @@ app.use(async (req, res, next) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/trades", tradesRoutes);
+app.use("/api/portfolio", portfolioRoutes);
+app.use("/api/bot-config", botConfigRoutes);
 
 // Add Google Auth verification endpoint with /api prefix
 app.post("/api/auth/google-verify", async (req, res) => {
@@ -288,6 +307,43 @@ if (process.env.VERCEL !== "1") {
 
 // Export the app for serverless use
 module.exports = app;
+
+// Add this near the top with other imports
+const { updatePortfolioSnapshots } = require("./utils/portfolioUpdater");
+
+// Add this after MongoDB connection setup
+// Schedule portfolio updates (once per day)
+if (NODE_ENV === "production") {
+  // In production, run once a day at midnight
+  const runDailyAt = (hour, minute, task) => {
+    const now = new Date();
+    let scheduledTime = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      hour,
+      minute,
+      0
+    );
+
+    if (scheduledTime <= now) {
+      scheduledTime = new Date(scheduledTime.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    const timeUntilTask = scheduledTime.getTime() - now.getTime();
+
+    setTimeout(() => {
+      task();
+      // Schedule for next day
+      setInterval(task, 24 * 60 * 60 * 1000);
+    }, timeUntilTask);
+  };
+
+  runDailyAt(0, 0, updatePortfolioSnapshots);
+} else {
+  // In development, run once at startup for testing
+  setTimeout(updatePortfolioSnapshots, 5000);
+}
 
 // Add this after all your routes are registered
 console.log("Registered routes:");

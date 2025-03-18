@@ -20,7 +20,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { signInWithGoogle } from "@/lib/auth";
 import { loginUser, verifyGoogleAuth } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, syncAuthState } from "@/contexts/AuthContext";
 
 // Safe navigation hook that falls back to window.location if Router context is missing
 const useNavigate = () => {
@@ -161,7 +161,7 @@ export function LoginForm({
             }, 500);
           }, 100);
         } else {
-          setError(result.message || "Login failed");
+          setError("Login failed");
         }
       } catch (err: any) {
         setError(err.message || "Login failed");
@@ -175,24 +175,39 @@ export function LoginForm({
       setLoading((prev) => ({ ...prev, google: true }));
       try {
         const result = await signInWithGoogle();
+        console.log("Google sign-in result:", result);
+
         if (result.success && result.user) {
           // Get the Firebase ID token
           const idToken = await result.user.getIdToken();
+          console.log("Firebase ID token obtained");
 
           // Send token to our backend for verification
           const backendResult = await verifyGoogleAuth(idToken);
+          console.log("Backend verification result:", backendResult);
 
           if (backendResult.success) {
             toast("Login successful");
 
             // Format user data consistently
             const userData = backendResult.data || {};
+            console.log("User data from backend:", userData);
+
             const googleUser = {
               id: userData.id || userData._id || result.user.uid,
               name: userData.name || result.user.displayName || "Google User",
               email: userData.email || result.user.email,
               avatar: userData.avatar || result.user.photoURL,
             };
+            console.log("Formatted user data:", googleUser);
+
+            // If no token was found in the response, use the Firebase ID token
+            if (!localStorage.getItem("auth_token")) {
+              console.log(
+                "No token in localStorage, using Firebase ID token as fallback"
+              );
+              localStorage.setItem("auth_token", idToken);
+            }
 
             // Update auth context
             setUser(googleUser);
@@ -201,7 +216,14 @@ export function LoginForm({
             const from = location.state?.from?.pathname || "/dashboard";
             navigate(from, { replace: true });
           } else {
-            setError(backendResult.message || "Server verification failed");
+            // Handle error
+            setError(
+              backendResult.error instanceof Error
+                ? backendResult.error.message
+                : typeof backendResult.error === "string"
+                ? backendResult.error
+                : "Server verification failed"
+            );
           }
         }
       } catch (error: any) {

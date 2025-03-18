@@ -2,6 +2,12 @@
 import { ChevronDown } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AreaChart, Area } from "recharts";
+import {
+  fetchPortfolioData,
+  fetchTrades,
+  fetchPositions,
+  fetchBotConfig,
+} from "@/lib/api";
 import axios from "axios";
 import {
   ResponsiveContainer,
@@ -57,6 +63,13 @@ import {
   SidebarInset,
   SidebarRail,
 } from "@/components/ui/sidebar";
+// import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PortfolioChart } from "@/components/portfolio-chart";
+import { TradeHistory } from "@/components/trade-history";
+import { BotControl } from "@/components/bot-control";
+import { QuickTrade } from "@/components/quick-trade";
+import { Positions } from "@/components/positions";
+import { BotRoadmap } from "@/components/bot-roadmap";
 
 // ================== CONFIG ENDPOINTS ==================
 const HISTORICAL_ENDPOINT =
@@ -128,6 +141,61 @@ interface CurrencyData {
   marketCap: number;
   change24h: number;
   lastUpdated: number;
+}
+
+interface PortfolioData {
+  totalValue: number;
+  paperBalance: number;
+  dailySnapshots: PortfolioSnapshot[];
+  weeklySnapshots: PortfolioSnapshot[];
+  monthlySnapshots: PortfolioSnapshot[];
+  yearlySnapshots: PortfolioSnapshot[];
+}
+
+interface PortfolioSnapshot {
+  timestamp: string;
+  totalValue: number;
+  paperBalance: number;
+}
+
+interface Trade {
+  _id: string;
+  type: "buy" | "sell";
+  amount: number;
+  symbol: string;
+  price: number;
+  total: number;
+  executedBy: "user" | "bot";
+  status: "pending" | "completed" | "failed" | "canceled";
+  timestamp: string;
+}
+
+interface Position {
+  _id: string;
+  symbol: string;
+  amount: number;
+  averageEntryPrice: number;
+  currentPrice: number;
+  profitLoss: number;
+  profitLossPercentage: number;
+  lastUpdated: string;
+}
+
+interface BotConfig {
+  active: boolean;
+  strategy: string;
+  riskLevel: number;
+  tradesPerDay: number;
+  autoRebalance: boolean;
+  dcaEnabled: boolean;
+  roadmap: BotRoadmapItem[];
+}
+
+interface BotRoadmapItem {
+  _id: string;
+  date: string;
+  plan: string;
+  completed: boolean;
 }
 
 export default function Dashboard() {
@@ -268,6 +336,99 @@ export default function Dashboard() {
   // 1. First, add a new state for news data
   const [newsItems, setNewsItems] = useState<any[]>([]);
   const [loadingNews, setLoadingNews] = useState<boolean>(true);
+
+  // Add these state variables inside your component
+  const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(
+    null
+  );
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [botConfig, setBotConfig] = useState<BotConfig | null>(null);
+  const [timeframe, setTimeframe] = useState<
+    "24h" | "1w" | "1m" | "1y" | "all"
+  >("1m");
+  const [portfolioLoading, setPortfolioLoading] = useState<boolean>(true);
+  const [tradesLoading, setTradesLoading] = useState<boolean>(true);
+  const [positionsLoading, setPositionsLoading] = useState<boolean>(true);
+  const [botConfigLoading, setBotConfigLoading] = useState<boolean>(true);
+
+  // Add these fetch functions
+
+  const fetchPortfolioDataHandler = useCallback(async () => {
+    try {
+      setPortfolioLoading(true);
+      const response = await fetchPortfolioData();
+      setPortfolioData(response.data);
+    } catch (error) {
+      console.error("Error fetching portfolio data:", error);
+    } finally {
+      setPortfolioLoading(false);
+    }
+  }, []);
+
+  const fetchTradesHandler = useCallback(async () => {
+    try {
+      setTradesLoading(true);
+      const response = await fetchTrades();
+      setTrades(response.data);
+    } catch (error) {
+      console.error("Error fetching trades:", error);
+    } finally {
+      setTradesLoading(false);
+    }
+  }, []);
+
+  const fetchPositionsHandler = useCallback(async () => {
+    try {
+      setPositionsLoading(true);
+      const response = await fetchPositions();
+      setPositions(response.data);
+    } catch (error) {
+      console.error("Error fetching positions:", error);
+    } finally {
+      setPositionsLoading(false);
+    }
+  }, []);
+
+  const fetchBotConfigHandler = useCallback(async () => {
+    try {
+      setBotConfigLoading(true);
+      const response = await fetchBotConfig();
+      setBotConfig(response.data);
+    } catch (error) {
+      console.error("Error fetching bot config:", error);
+    } finally {
+      setBotConfigLoading(false);
+    }
+  }, []);
+
+  // Add this useEffect to fetch data
+  useEffect(() => {
+    fetchPortfolioDataHandler();
+    fetchTradesHandler();
+    fetchPositionsHandler();
+    fetchBotConfigHandler();
+  }, [
+    fetchPortfolioDataHandler,
+    fetchTradesHandler,
+    fetchPositionsHandler,
+    fetchBotConfigHandler,
+  ]);
+
+  // Add this function to add funds
+  const handleAddFunds = async (amount: number) => {
+    try {
+      await axios.post(
+        `${config.api.baseUrl}/api/portfolio/add-funds`,
+        { amount },
+        { withCredentials: true } // Replace 'credentials: include' with this
+      );
+      // Refresh portfolio data
+      fetchPortfolioDataHandler();
+    } catch (error) {
+      console.error("Error adding funds:", error);
+    }
+  };
 
   // ============== Helpers ==============
   function formatCurrency(num: number, abbreviated: boolean = false): string {
@@ -1162,14 +1323,14 @@ export default function Dashboard() {
                   {loading ? "Loading" : "Refresh"}
                 </Button>
                 <ModeToggle />
-                {/* <Button
+                <Button
                   variant="destructive"
                   size="sm"
                   onClick={async () => {
                     try {
                       await fetch(`${config.api.baseUrl}/api/auth/logout`, {
                         method: "POST",
-                        credentials: "include",
+                        credentials: "include", // This is correct for fetch API
                       });
                       await logout();
                       navigate("/login");
@@ -1179,7 +1340,7 @@ export default function Dashboard() {
                   }}
                 >
                   Logout
-                </Button> */}
+                </Button>
               </div>
             </div>
           </div>
@@ -1505,74 +1666,12 @@ export default function Dashboard() {
                       </p>
                     </div>
                   ) : (
-                    <ResponsiveContainer>
-                      <AreaChart data={portfolioHistory}>
-                        <defs>
-                          <linearGradient
-                            id="portfolioGradient"
-                            x1="0"
-                            y1="0"
-                            x2="0"
-                            y2="1"
-                          >
-                            <stop
-                              offset="5%"
-                              stopColor="#8884d8"
-                              stopOpacity={0.8}
-                            />
-                            <stop
-                              offset="95%"
-                              stopColor="#8884d8"
-                              stopOpacity={0.1}
-                            />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          vertical={false}
-                          opacity={0.2}
-                        />
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fontSize: 10 }}
-                          allowDataOverflow
-                          minTickGap={15}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 10 }}
-                          width={60}
-                          tickFormatter={(val) => formatCurrency(val, true)}
-                        />
-                        <Tooltip
-                          content={({ active, payload, label }) => {
-                            if (active && payload && payload.length) {
-                              return (
-                                <div className="bg-background/95 backdrop-blur-sm border rounded shadow-lg p-3 text-xs">
-                                  <div className="font-bold mb-1">{label}</div>
-                                  <div className="text-muted-foreground mb-1">
-                                    {payload[0].payload.time}
-                                  </div>
-                                  <div className="font-medium">
-                                    Value:{" "}
-                                    {formatCurrency(payload[0].value as number)}
-                                  </div>
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="value"
-                          stroke="#8884d8"
-                          fill="url(#portfolioGradient)"
-                          strokeWidth={2}
-                          isAnimationActive={true}
-                          animationDuration={1000}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <PortfolioChart
+                      data={portfolioHistory}
+                      timeframe={
+                        portfolioDateRange as "24h" | "1w" | "1m" | "1y" | "all"
+                      }
+                    />
                   )}
                 </div>
               </CardContent>

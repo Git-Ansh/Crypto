@@ -86,7 +86,7 @@ export function SignupForm() {
           const from = location.state?.from?.pathname || "/dashboard";
           navigate(from, { replace: true });
         } else {
-          setError(backendResult.message || "Server verification failed");
+          setError("Server verification failed");
         }
       }
     } catch (error: any) {
@@ -143,8 +143,19 @@ export function SignupForm() {
         formData.password
       );
 
-      toast("Registration successful");
-      navigate("/login");
+      if (result.success) {
+        toast("Registration successful");
+        navigate("/login");
+      } else {
+        // Handle error from API response
+        setError(
+          typeof result.error === "string"
+            ? result.error
+            : result.error instanceof Error
+            ? result.error.message
+            : "Registration failed"
+        );
+      }
     } catch (err: any) {
       setError(err.message || "Registration failed");
     } finally {
@@ -308,7 +319,26 @@ export function SignupForm() {
           </Card>
           <div className="text-muted-foreground mt-4 text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4 *:[a]:hover:text-primary">
             By clicking continue, you agree to our{" "}
-            <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+            <a
+              href="/terms"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate("/terms");
+              }}
+            >
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a
+              href="/privacy"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate("/privacy");
+              }}
+            >
+              Privacy Policy
+            </a>
+            .
           </div>
         </div>
       </div>

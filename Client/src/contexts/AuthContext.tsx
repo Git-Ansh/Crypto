@@ -149,3 +149,19 @@ export function useAuth() {
   }
   return context;
 }
+
+// Add this function to synchronize authentication state
+export const syncAuthState = (userData: any, token?: string) => {
+  // If a token is provided, store it
+  if (token) {
+    localStorage.setItem("auth_token", token);
+  }
+
+  // Store user data in localStorage
+  if (userData) {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
+  } else {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem("auth_token");
+  }
+};

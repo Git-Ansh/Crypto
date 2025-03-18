@@ -47,10 +47,8 @@ router.post(
     }),
   ],
   async (req, res, next) => {
-    // Validate request body
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      // Pass validation errors to error handler
       return next(new CustomError("Validation failed", 400));
     }
 
@@ -75,14 +73,12 @@ router.post(
       });
 
       await newUser.save();
-
       res.status(201).json({ message: "User registered successfully" });
     } catch (error) {
-      // If the error is not a CustomError, convert it to one
       if (!(error instanceof CustomError)) {
         return next(new CustomError("Server error", 500));
       }
-      next(error); // Pass the error to the error handler
+      next(error);
     }
   }
 );
@@ -95,7 +91,6 @@ router.post(
     check("password", "Password is required").exists(),
   ],
   async (req, res, next) => {
-    // Validate request body
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return next(new CustomError("Validation failed", 400));
@@ -103,9 +98,6 @@ router.post(
 
     try {
       const { email, password } = req.body;
-
-      // Check if user exists
-
       const userEmail = email.toLowerCase();
       console.log("User Email:", userEmail);
       const user = await User.findOne({ email: userEmail });
@@ -114,7 +106,6 @@ router.post(
         throw new CustomError("Invalid credentials", 400);
       }
 
-      // Compare passwords
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
         throw new CustomError("Invalid credentials", 400);
@@ -126,9 +117,10 @@ router.post(
         expiresAt: { $lt: new Date() },
       });
 
-      // Create short-lived JWT Access Token
+      // Create JWT Access Token with explicit algorithm
       const accessPayload = { user: { id: user.id } };
       const accessToken = jwt.sign(accessPayload, process.env.JWT_SECRET, {
+        algorithm: "HS256",
         expiresIn: "15m",
       });
 
@@ -147,46 +139,44 @@ router.post(
         expiresAt: expiry,
       });
 
+      // Set cookies
       res.cookie("token", accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production", // only send over HTTPS in production
-        sameSite: "none",
-        secure: true,
-        maxAge: 15 * 60 * 1000, // 15 minutes in ms
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 15 * 60 * 1000,
       });
 
       res.cookie("refreshToken", rawRefresh, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "none",
-        secure: true,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // e.g. 7 days
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      // Return minimal JSON (no tokens)
       res.json({
         success: true,
         message: "Logged in successfully",
-        expiresIn: 15 * 60, // optional, if you want the client to know the access token expiry in seconds
+        token: accessToken,
+        expiresIn: 15 * 60,
       });
     } catch (error) {
       console.log(error);
-      // If the error is not a CustomError, convert it to one
       if (!(error instanceof CustomError)) {
         return next(new CustomError("Server error", 500));
       }
-      next(error); // Pass the error to the error handler
+      next(error);
     }
   }
 );
 
+// ============== VERIFY TOKEN ROUTE ==============
 router.get("/verify", async (req, res, next) => {
   try {
     console.log("Environment:", process.env.NODE_ENV);
     console.log("Headers:", req.headers);
     console.log("Cookies:", req.cookies);
 
-    // Extract the access token from cookies
     const token = req.cookies.token;
     console.log("Extracted Token:", token);
 
@@ -194,7 +184,6 @@ router.get("/verify", async (req, res, next) => {
       throw new CustomError("No token provided", 401);
     }
 
-    // Verify the access token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log("Decoded Token:", decoded);
 
@@ -219,10 +208,8 @@ router.post("/refresh-token", async (req, res, next) => {
       throw new CustomError("Refresh token is required", 400);
     }
 
-    // Decrypt the received refresh token
     const decryptedRefresh = decrypt(refreshToken);
 
-    // Find the refresh token in the database
     const storedToken = await RefreshToken.findOne({
       encryptedToken: encrypt(decryptedRefresh),
     });
@@ -231,35 +218,29 @@ router.post("/refresh-token", async (req, res, next) => {
       throw new CustomError("Invalid refresh token", 403);
     }
 
-    // Check if the refresh token has expired
     if (storedToken.expiresAt < new Date()) {
-      // Delete the expired refresh token
       await RefreshToken.deleteOne({ _id: storedToken._id });
       throw new CustomError("Refresh token has expired", 403);
     }
 
-    // Find the associated user
     const user = await User.findById(storedToken.userId);
     if (!user) {
       throw new CustomError("User not found", 404);
     }
 
-    // Generate a new access token
     const accessPayload = { user: { id: user.id } };
     const newAccessToken = jwt.sign(accessPayload, process.env.JWT_SECRET, {
+      algorithm: "HS256",
       expiresIn: "15m",
     });
 
     // Optionally: Generate a new refresh token and invalidate the old one
-    // Comment out the following block if you want to reuse the same refresh token
     const newRefreshString = generateRefreshTokenString();
     const newEncryptedRefresh = encrypt(newRefreshString);
 
-    // Calculate new expiry
     const newExpiry = new Date();
     newExpiry.setDate(newExpiry.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
 
-    // Store the new refresh token and delete the old one
     await RefreshToken.create({
       userId: user._id,
       encryptedToken: newEncryptedRefresh,
@@ -270,21 +251,18 @@ router.post("/refresh-token", async (req, res, next) => {
       expiresAt: { $lt: new Date() },
     });
 
-    // Send the new tokens to the client
     res.cookie("refreshToken", newRefreshString, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
-      secure: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     res.cookie("token", newAccessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
-      secure: true,
-      maxAge: 15 * 60 * 1000, // 15 minutes in ms
+      maxAge: 15 * 60 * 1000,
     });
 
     res.json({
@@ -305,23 +283,19 @@ router.post("/logout", async (req, res, next) => {
   try {
     const { refreshToken } = req.cookies;
     if (refreshToken) {
-      // We do *not* call 'decrypt' because this is the raw token
       const encryptedRefresh = encrypt(refreshToken);
       await RefreshToken.deleteOne({ encryptedToken: encryptedRefresh });
     }
 
-    // Clear cookies
     res.clearCookie("token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
-      secure: true,
     });
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
-      secure: true,
     });
 
     res.json({ message: "Logged out successfully" });
@@ -335,31 +309,23 @@ router.post("/logout", async (req, res, next) => {
 router.post("/google-verify", async (req, res, next) => {
   try {
     const { idToken } = req.body;
-
     if (!idToken) {
       throw new CustomError("No ID token provided", 400);
     }
 
-    // Verify the Firebase ID token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const { uid, email, name, picture } = decodedToken;
 
-    // Check if user exists in our database
     let user = await User.findOne({ email });
-
     if (!user) {
-      // Create a new user if they don't exist
       user = new User({
         username: name || email.split("@")[0],
         email,
         firebaseUid: uid,
         avatar: picture,
-        // No password needed for OAuth users
       });
-
       await user.save();
     } else {
-      // Update existing user with Firebase UID if needed
       if (!user.firebaseUid) {
         user.firebaseUid = uid;
         if (picture && !user.avatar) user.avatar = picture;
@@ -367,51 +333,43 @@ router.post("/google-verify", async (req, res, next) => {
       }
     }
 
-    // Delete expired refresh tokens
     await RefreshToken.deleteMany({
       userId: user._id,
       expiresAt: { $lt: new Date() },
     });
 
-    // Create JWT access token
     const accessPayload = { user: { id: user.id } };
     const accessToken = jwt.sign(accessPayload, process.env.JWT_SECRET, {
+      algorithm: "HS256",
       expiresIn: "15m",
     });
 
-    // Generate refresh token
     const rawRefresh = generateRefreshTokenString();
     const encryptedRefresh = encrypt(rawRefresh);
 
-    // Calculate refresh token expiry
     const expiry = new Date();
     expiry.setDate(expiry.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
 
-    // Store encrypted refresh token in DB
     await RefreshToken.create({
       userId: user._id,
       encryptedToken: encryptedRefresh,
       expiresAt: expiry,
     });
 
-    // Set cookies
     res.cookie("token", accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
-      secure: true,
-      maxAge: 15 * 60 * 1000, // 15 minutes
+      maxAge: 15 * 60 * 1000,
     });
 
     res.cookie("refreshToken", rawRefresh, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
-      secure: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    // Return success response with minimal user data
     res.json({
       success: true,
       message: "Google authentication successful",
@@ -431,5 +389,135 @@ router.post("/google-verify", async (req, res, next) => {
   }
 });
 
-// Export the router containing all authentication routes
+// ============== DEBUG TOKEN ROUTE ==============
+router.get("/debug-token", async (req, res) => {
+  const authHeader = req.header("Authorization");
+  console.log("Auth header:", authHeader);
+
+  const token = authHeader?.split(" ")[1];
+  console.log("Extracted token:", token ? "Token exists" : "No token");
+
+  if (!token) {
+    return res.status(400).json({
+      message: "No token provided",
+      headers: req.headers,
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return res.json({
+      valid: true,
+      decoded,
+      message: "Token is valid",
+    });
+  } catch (err) {
+    console.error("Token verification error:", err);
+    return res.status(401).json({
+      valid: false,
+      message: "Invalid token",
+      error: err.message,
+    });
+  }
+});
+
+// ============== TOKEN INFO ROUTE ==============
+router.get("/token-info", async (req, res) => {
+  const authHeader = req.header("Authorization");
+  const token = authHeader?.split(" ")[1] || req.cookies.token;
+
+  if (!token) {
+    return res.status(400).json({ message: "No token provided" });
+  }
+
+  try {
+    const decoded = jwt.decode(token, { complete: true });
+    return res.json({
+      header: decoded.header,
+      payload: decoded.payload,
+      signature: "exists but not shown",
+    });
+  } catch (err) {
+    return res.status(400).json({
+      message: "Error decoding token",
+      error: err.message,
+    });
+  }
+});
+
+// Add a new route for token exchange
+router.post("/exchange-google-token", async (req, res, next) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      throw new CustomError("No ID token provided", 400);
+    }
+
+    // Verify the Google token using Firebase Admin SDK
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid, email, name, picture } = decodedToken;
+
+    // Find or create user
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = new User({
+        username: name || email.split("@")[0],
+        email,
+        firebaseUid: uid,
+        avatar: picture,
+      });
+      await user.save();
+    }
+
+    // Create our own token with HS256 algorithm
+    const accessPayload = { user: { id: user.id } };
+    const accessToken = jwt.sign(accessPayload, process.env.JWT_SECRET, {
+      algorithm: "HS256",
+      expiresIn: "15m",
+    });
+
+    // Create refresh token
+    const rawRefresh = generateRefreshTokenString();
+    const encryptedRefresh = encrypt(rawRefresh);
+
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+
+    await RefreshToken.create({
+      userId: user._id,
+      encryptedToken: encryptedRefresh,
+      expiresAt: expiry,
+    });
+
+    // Set cookies
+    res.cookie("token", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "none",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", rawRefresh, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "none",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      token: accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+      },
+    });
+  } catch (error) {
+    console.error("Token exchange error:", error);
+    next(error);
+  }
+});
+
 module.exports = router;

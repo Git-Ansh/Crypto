@@ -16,6 +16,7 @@ import React, {
   ReactNode,
   useEffect,
 } from "react";
+import { verifyGoogleAuth } from "./api";
 
 // Define a proper type for the user
 type AuthUser = User | null;
@@ -71,9 +72,26 @@ export const signInWithGoogle = async () => {
 
     const result = await signInWithPopup(auth, provider);
 
+    // Get the ID token
+    const idToken = await result.user.getIdToken();
+
+    // Verify with backend and get JWT token
+    const backendResult = await verifyGoogleAuth(idToken);
+
+    if (!backendResult.success) {
+      console.error("Backend verification failed:", backendResult.error);
+      return {
+        success: false,
+        message: typeof backendResult.error === 'string'
+          ? backendResult.error
+          : "Server verification failed",
+      };
+    }
+
     return {
       success: true,
       user: result.user,
+      backendData: backendResult.data
     };
   } catch (error) {
     console.error("Google sign-in error:", error);
