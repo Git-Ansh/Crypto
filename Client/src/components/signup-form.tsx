@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { signInWithGoogle } from "@/lib/auth";
 import { verifyGoogleAuth } from "@/lib/api";
+import { registerUser } from "../lib/api";
 
 // Define a function to safely use location
 const useSafeLocation = () => {
@@ -96,44 +97,54 @@ export function SignupForm() {
     }
   };
 
+  const validateForm = () => {
+    // Check if passwords match
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match");
+      return false;
+    }
+
+    // Check password length (minimum 6 characters)
+    if (formData.password.length < 6) {
+      setError("Password must be at least 6 characters long");
+      return false;
+    }
+
+    // Check for valid email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError("Please enter a valid email address");
+      return false;
+    }
+
+    // Check username length
+    if (formData.username.length < 3) {
+      setError("Username must be at least 3 characters long");
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate form
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters");
+    // Validate form data
+    if (!validateForm()) {
       return;
     }
 
     setLoading((prev) => ({ ...prev, email: true }));
 
     try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-        }),
-        credentials: "include",
-      });
+      const result = await registerUser(
+        formData.username,
+        formData.email,
+        formData.password
+      );
 
-      const result = await response.json();
-
-      if (response.ok) {
-        toast("Registration successful");
-        navigate("/login");
-      } else {
-        setError(result.message || "Registration failed");
-      }
+      toast("Registration successful");
+      navigate("/login");
     } catch (err: any) {
       setError(err.message || "Registration failed");
     } finally {

@@ -8,14 +8,26 @@ const API_BASE_URL = config.api.baseUrl;
 async function apiRequest(endpoint: string, options: RequestInit = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
 
+  console.log(`Making API request to: ${url}`);
+
   // Default headers
   const headers = {
     "Content-Type": "application/json",
     ...options.headers,
   };
 
+  // Include credentials for cookies
+  const requestOptions = {
+    ...options,
+    headers,
+    credentials: 'include' as RequestCredentials
+  };
+
   try {
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, requestOptions);
+
+    // Log response status for debugging
+    console.log(`API response status: ${response.status}`);
 
     // Parse response as JSON
     const data = await response.json();
