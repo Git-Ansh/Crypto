@@ -2,6 +2,7 @@ import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Dashboard from "@/components/dashboard";
 import { LoginForm } from "@/components/login-form";
+import { SignupForm } from "@/components/signup-form";
 import { useAuth } from "@/contexts/AuthContext";
 import TestPage from "./components/TestPage";
 
@@ -70,6 +71,16 @@ export function AppRouter() {
         element={
           <PublicRoute>
             <LoginForm />
+          </PublicRoute>
+        }
+      />
+
+      {/* Signup route - only accessible when logged out */}
+      <Route
+        path="/register"
+        element={
+          <PublicRoute>
+            <SignupForm />
           </PublicRoute>
         }
       />

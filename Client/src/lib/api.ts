@@ -54,6 +54,16 @@ export async function verifyGoogleAuth(idToken: string) {
   });
 }
 
+/**
+ * User registration
+ */
+export async function registerUser(username: string, email: string, password: string) {
+  return apiRequest("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ username, email, password }),
+  });
+}
+
 // Add other API functions as needed
 export async function getUserProfile() {
   // Get auth token from storage

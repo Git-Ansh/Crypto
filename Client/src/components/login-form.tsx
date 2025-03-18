@@ -339,6 +339,10 @@ export function LoginForm({
                       <a
                         href="/register"
                         className="underline underline-offset-4"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate("/register");
+                        }}
                       >
                         Sign up
                       </a>

@@ -133,6 +133,7 @@ interface CurrencyData {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const { user } = useAuth();
 
   const [cryptoData, setCryptoData] = useState<CryptoInfo | null>(null);
   const [chartData, setChartData] = useState<KlineData[]>([]);
@@ -145,6 +146,9 @@ export default function Dashboard() {
   const [portfolioDateRange, setPortfolioDateRange] = useState<string>("24h");
   const [portfolioChartLoading, setPortfolioChartLoading] =
     useState<boolean>(false);
+
+  // Now define isNewUser after portfolioHistory is declared
+  const isNewUser = !portfolioHistory || portfolioHistory.length === 0;
 
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -1125,11 +1129,14 @@ export default function Dashboard() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
             <div className="pl-10">
-              {" "}
-              {/* Add padding to make room for the button */}
               <h1 className="text-3xl font-bold crypto-dashboard-title">
                 Crypto Pilot Dashboard
               </h1>
+              {/* <p className="text-muted-foreground mt-1">
+                {isNewUser
+                  ? `Welcome, ${user?.name || "Trader"}!`
+                  : `Welcome back, ${user?.name || "Trader"}!`}
+              </p> */}
             </div>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
               <div className="flex items-center gap-2">
@@ -1192,6 +1199,11 @@ export default function Dashboard() {
               <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
                 <CardTitle className="text-base sm:text-lg">
                   Portfolio Overview
+                  <p className="mb-2 text-muted-foreground">
+                    {isNewUser
+                      ? `Welcome, ${user?.name || "Trader"}!`
+                      : `Welcome back, ${user?.name || "Trader"}!`}
+                  </p>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
