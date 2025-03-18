@@ -1,30 +1,14 @@
-// server/routes/auth.js
 const express = require("express");
 const router = express.Router();
-const bcrypt = require("bcryptjs"); // Changed from bcrypt to bcryptjs
+const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { check, validationResult } = require("express-validator");
-const crypto = require("crypto");
-const admin = require("firebase-admin");
-
-// Initialize Firebase Admin SDK if not already initialized
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-    }),
-  });
-}
-
-// Models
+const { CustomError } = require("../utils/errors");
 const User = require("../models/user");
 const RefreshToken = require("../models/RefreshTokens");
-
-// Utilities
 const { encrypt, decrypt } = require("../utils/crypto");
-const CustomError = require("../utils/CustomError");
+const crypto = require("crypto");
+const admin = require("firebase-admin");
 
 // Constants
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
@@ -517,6 +501,64 @@ router.post("/exchange-google-token", async (req, res, next) => {
   } catch (error) {
     console.error("Token exchange error:", error);
     next(error);
+  }
+});
+
+// Add this route to get current user data - simplified version
+router.get("/users/me", async (req, res) => {
+  try {
+    // Extract token from authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ message: "No token, authorization denied" });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Get user from database
+    const user = await User.findById(decoded.user.id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// Add this route to get current user data - no dependencies version
+router.get("/me", async (req, res) => {
+  try {
+    // Extract token from authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ message: "No token, authorization denied" });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Get user from database
+    const user = await User.findById(decoded.user.id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: "Server Error" });
   }
 });
 

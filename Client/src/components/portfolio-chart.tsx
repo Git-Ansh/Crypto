@@ -10,14 +10,8 @@ import {
 } from "recharts";
 import { Card } from "@/components/ui/card";
 
-interface PortfolioSnapshot {
-  timestamp: string;
-  totalValue: number;
-  paperBalance: number;
-}
-
 interface PortfolioChartProps {
-  data: PortfolioSnapshot[] | undefined;
+  data: any[];
   timeframe: "24h" | "1w" | "1m" | "1y" | "all";
 }
 
@@ -30,13 +24,32 @@ export function PortfolioChart({ data, timeframe }: PortfolioChartProps) {
     );
   }
 
-  const formatData = data.map((item) => ({
-    ...item,
-    timestamp: new Date(item.timestamp),
-    total: item.totalValue + item.paperBalance,
-  }));
+  // Process the data to ensure dates are properly formatted
+  const formatData = data.map((item) => {
+    // Handle both date string and Date object cases
+    const dateValue = item.date || item.timestamp;
+    const dateObj =
+      typeof dateValue === "string" ? new Date(dateValue) : dateValue;
+
+    return {
+      ...item,
+      timestamp: dateObj,
+      // Ensure we have the required values
+      totalValue: item.totalValue || item.value || 0,
+      paperBalance: item.paperBalance || 0,
+      total: (item.totalValue || item.value || 0) + (item.paperBalance || 0),
+    };
+  });
 
   const formatXAxis = (timestamp: Date) => {
+    if (
+      !timestamp ||
+      !(timestamp instanceof Date) ||
+      isNaN(timestamp.getTime())
+    ) {
+      return "";
+    }
+
     if (timeframe === "24h") {
       return timestamp.toLocaleTimeString([], {
         hour: "2-digit",
@@ -56,6 +69,14 @@ export function PortfolioChart({ data, timeframe }: PortfolioChartProps) {
   };
 
   const formatTooltipDate = (timestamp: Date) => {
+    if (
+      !timestamp ||
+      !(timestamp instanceof Date) ||
+      isNaN(timestamp.getTime())
+    ) {
+      return "Unknown date";
+    }
+
     if (timeframe === "24h") {
       return timestamp.toLocaleTimeString([], {
         hour: "2-digit",
@@ -86,17 +107,22 @@ export function PortfolioChart({ data, timeframe }: PortfolioChartProps) {
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
+      // Safely access payload data with null checks
+      const totalValue = payload[0]?.value || 0;
+      const portfolioValue = payload[0]?.payload?.totalValue || 0;
+      const cashValue = payload[0]?.payload?.paperBalance || 0;
+
       return (
         <Card className="p-2 bg-background border shadow-md">
           <p className="text-sm font-medium">{formatTooltipDate(label)}</p>
           <p className="text-sm text-green-500">
-            Total: {formatCurrency(payload[0].value)}
+            Total: {formatCurrency(totalValue)}
           </p>
           <p className="text-sm text-blue-500">
-            Portfolio: {formatCurrency(payload[1].payload.totalValue)}
+            Portfolio: {formatCurrency(portfolioValue)}
           </p>
           <p className="text-sm text-purple-500">
-            Cash: {formatCurrency(payload[1].payload.paperBalance)}
+            Cash: {formatCurrency(cashValue)}
           </p>
         </Card>
       );

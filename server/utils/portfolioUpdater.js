@@ -3,6 +3,28 @@ const Portfolio = require("../models/portfolio");
 const Position = require("../models/position");
 const User = require("../models/user");
 
+// Add this validation function before updating portfolio snapshots
+const validatePortfolioData = (snapshot) => {
+  // Check for NaN values and provide defaults
+  if (
+    isNaN(snapshot.totalValue) ||
+    snapshot.totalValue === null ||
+    snapshot.totalValue === undefined
+  ) {
+    snapshot.totalValue = 0;
+  }
+
+  if (
+    isNaN(snapshot.paperBalance) ||
+    snapshot.paperBalance === null ||
+    snapshot.paperBalance === undefined
+  ) {
+    snapshot.paperBalance = 0;
+  }
+
+  return snapshot;
+};
+
 // Update portfolio snapshots for all users
 async function updatePortfolioSnapshots() {
   try {
@@ -34,13 +56,16 @@ async function updatePortfolioSnapshots() {
 
       // Create new snapshot
       const newSnapshot = {
-        timestamp: new Date(),
-        totalValue,
-        paperBalance: user.paperBalance,
+        timestamp: new Date().toISOString(),
+        totalValue: calculateTotalValue(positions),
+        paperBalance: user.paperBalance || 0,
       };
 
+      // Add this line after creating the snapshot
+      const validatedSnapshot = validatePortfolioData(newSnapshot);
+
       // Add to daily snapshots (keep last 30 days)
-      portfolio.dailySnapshots.push(newSnapshot);
+      portfolio.dailySnapshots.push(validatedSnapshot);
       if (portfolio.dailySnapshots.length > 30) {
         portfolio.dailySnapshots.shift();
       }
@@ -53,7 +78,7 @@ async function updatePortfolioSnapshots() {
         new Date() - new Date(lastWeeklySnapshot.timestamp) >
           7 * 24 * 60 * 60 * 1000
       ) {
-        portfolio.weeklySnapshots.push(newSnapshot);
+        portfolio.weeklySnapshots.push(validatedSnapshot);
         // Keep last 52 weeks
         if (portfolio.weeklySnapshots.length > 52) {
           portfolio.weeklySnapshots.shift();
@@ -68,7 +93,7 @@ async function updatePortfolioSnapshots() {
         new Date() - new Date(lastMonthlySnapshot.timestamp) >
           30 * 24 * 60 * 60 * 1000
       ) {
-        portfolio.monthlySnapshots.push(newSnapshot);
+        portfolio.monthlySnapshots.push(validatedSnapshot);
         // Keep last 24 months
         if (portfolio.monthlySnapshots.length > 24) {
           portfolio.monthlySnapshots.shift();
@@ -83,7 +108,7 @@ async function updatePortfolioSnapshots() {
         new Date() - new Date(lastYearlySnapshot.timestamp) >
           365 * 24 * 60 * 60 * 1000
       ) {
-        portfolio.yearlySnapshots.push(newSnapshot);
+        portfolio.yearlySnapshots.push(validatedSnapshot);
         // Keep all yearly snapshots
       }
 

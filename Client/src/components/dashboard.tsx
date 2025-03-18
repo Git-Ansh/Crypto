@@ -211,7 +211,10 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState<string>("");
 
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
-  const [portfolioDateRange, setPortfolioDateRange] = useState<string>("24h");
+  // const [portfolioDateRange, setPortfolioDateRange] = useState<string>("24h");
+  const [portfolioDateRange, setPortfolioDateRange] = useState<
+    "24h" | "1w" | "1m" | "1y" | "all"
+  >("1m");
   const [portfolioChartLoading, setPortfolioChartLoading] =
     useState<boolean>(false);
 
@@ -351,6 +354,9 @@ export default function Dashboard() {
   const [tradesLoading, setTradesLoading] = useState<boolean>(true);
   const [positionsLoading, setPositionsLoading] = useState<boolean>(true);
   const [botConfigLoading, setBotConfigLoading] = useState<boolean>(true);
+  const [accountCreationDate, setAccountCreationDate] = useState<string | null>(
+    null
+  );
 
   // Add these fetch functions
 
@@ -750,8 +756,16 @@ export default function Dashboard() {
       };
 
       ws.onclose = (e) => {
-        console.log("WebSocket closed:", e.code, e.reason);
         setWsConnected(false);
+        // Only attempt reconnection if not intentionally closed
+        if (e.code !== 1000 && e.code !== 1001) {
+          console.log(
+            "WebSocket disconnected, attempting to reconnect in 5 seconds..."
+          );
+          setTimeout(() => {
+            connectWebSocketForCurrency(symbol);
+          }, 5000);
+        }
       };
     },
     [processBatch]
@@ -840,6 +854,33 @@ export default function Dashboard() {
       }
     };
   }, [fetchTopCurrencies, initializeDashboardForCurrency, fetchLatestNews]);
+
+  // Add this function to fetch user data including creation date
+  const fetchUserData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(
+        `${config.api.baseUrl}/api/users/profile`,
+        {
+          withCredentials: true,
+        }
+      );
+
+      if (response.data && response.data.createdAt) {
+        console.log("Account creation date:", response.data.createdAt);
+        setAccountCreationDate(response.data.createdAt);
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+      setLoading(false);
+    }
+  }, []);
+
+  // Call this in useEffect
+  useEffect(() => {
+    fetchUserData();
+  }, [fetchUserData]);
 
   // ============== Handlers ==============
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -1139,11 +1180,13 @@ export default function Dashboard() {
     (range: string) => {
       setPortfolioChartLoading(true);
 
-      let dataPoints: number;
-      let startValue: number;
-      let volatility: number;
-      let startDate: Date;
-      let dateStep: number;
+      let dataPoints = 24;
+      let startValue = 0;
+      let volatility = 0.01;
+      let startDate = new Date();
+      let dateStep = 60 * 60 * 1000; // 1 hour in milliseconds
+
+      console.log("Using account creation date:", accountCreationDate);
 
       switch (range) {
         case "24h":
@@ -1179,8 +1222,26 @@ export default function Dashboard() {
           dataPoints = 24;
           startValue = portfolioBalance * 0.4;
           volatility = 0.07;
-          startDate = new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000);
-          dateStep = 45 * 24 * 60 * 60 * 1000;
+
+          // Always use account creation date for "all time" view
+          if (accountCreationDate) {
+            startDate = new Date(accountCreationDate);
+            console.log("Using start date:", startDate);
+
+            // Calculate date step based on time between creation and now
+            const totalDays = Math.max(
+              1,
+              (Date.now() - startDate.getTime()) / (24 * 60 * 60 * 1000)
+            );
+            dateStep = Math.ceil(totalDays / dataPoints) * 24 * 60 * 60 * 1000;
+
+            // Ensure we have at least one day between points
+            dateStep = Math.max(dateStep, 24 * 60 * 60 * 1000);
+          } else {
+            // Fallback to 3 years ago if no account creation date
+            startDate = new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000);
+            dateStep = 45 * 24 * 60 * 60 * 1000; // ~45 days between points
+          }
           break;
       }
 
@@ -1196,20 +1257,18 @@ export default function Dashboard() {
           currentValue = portfolioBalance;
         }
 
+        // Create data in the format expected by PortfolioChart
         data.push({
-          date: date.toLocaleDateString(),
-          value: currentValue,
-          time: date.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
+          timestamp: date.toISOString(), // Use ISO string format for consistent parsing
+          totalValue: currentValue * 0.8, // Simulate portfolio value
+          paperBalance: currentValue * 0.2, // Simulate cash balance
         });
       }
 
       setPortfolioHistory(data);
       setPortfolioChartLoading(false);
     },
-    [portfolioBalance]
+    [portfolioBalance, accountCreationDate]
   );
 
   useEffect(() => {
@@ -1323,7 +1382,7 @@ export default function Dashboard() {
                   {loading ? "Loading" : "Refresh"}
                 </Button>
                 <ModeToggle />
-                <Button
+                {/* <Button
                   variant="destructive"
                   size="sm"
                   onClick={async () => {
@@ -1340,7 +1399,7 @@ export default function Dashboard() {
                   }}
                 >
                   Logout
-                </Button>
+                </Button> */}
               </div>
             </div>
           </div>

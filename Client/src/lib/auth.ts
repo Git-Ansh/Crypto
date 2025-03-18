@@ -140,3 +140,58 @@ export const signOut = async () => {
     };
   }
 };
+
+// Add this function to handle token refresh
+export const refreshFirebaseToken = async () => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error("No user is signed in");
+  }
+
+  // Force token refresh
+  const newToken = await currentUser.getIdToken(true);
+  return newToken;
+};
+
+// Modify your API calls to handle token expiration
+export const callAuthenticatedEndpoint = async (
+  url: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+  data?: Record<string, any>
+) => {
+  try {
+    // First attempt with current token
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`
+      },
+      body: data ? JSON.stringify(data) : undefined
+    });
+
+    if (response.status === 401) {
+      const responseData = await response.json();
+      // Check if token expired
+      if (responseData.message?.includes('expired')) {
+        // Refresh token and retry
+        const newToken = await refreshFirebaseToken();
+
+        // Retry with new token
+        return fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${newToken}`
+          },
+          body: data ? JSON.stringify(data) : undefined
+        });
+      }
+    }
+
+    return response;
+  } catch (error) {
+    console.error("API call failed:", error);
+    throw error;
+  }
+};

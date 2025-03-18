@@ -156,6 +156,7 @@ const dashboardRoutes = require("./routes/dashboard");
 const tradesRoutes = require("./routes/trades");
 const portfolioRoutes = require("./routes/portfolio");
 const botConfigRoutes = require("./routes/botConfig");
+const usersRoutes = require("./routes/users");
 
 // Handle database connection before routing
 app.use(async (req, res, next) => {
@@ -174,6 +175,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/trades", tradesRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/bot-config", botConfigRoutes);
+app.use("/api/users", usersRoutes);
 
 // Add Google Auth verification endpoint with /api prefix
 app.post("/api/auth/google-verify", async (req, res) => {
