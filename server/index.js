@@ -33,16 +33,19 @@ const firebaseConfig = {
   client_x509_cert_url: process.env.FIREBASE_CLIENT_CERT_URL,
 };
 
-// Only initialize if we have the required credentials
+// Only initialize if we have the required credentials and Firebase isn't already initialized
 if (
   process.env.FIREBASE_PROJECT_ID &&
   process.env.FIREBASE_CLIENT_EMAIL &&
-  process.env.FIREBASE_PRIVATE_KEY
+  process.env.FIREBASE_PRIVATE_KEY &&
+  !admin.apps.length // Check if Firebase is already initialized
 ) {
   admin.initializeApp({
     credential: admin.credential.cert(firebaseConfig),
   });
   console.log("Firebase Admin SDK initialized");
+} else if (admin.apps.length) {
+  console.log("Firebase Admin SDK already initialized");
 } else {
   console.warn(
     "Firebase credentials missing, authentication features may not work properly"
