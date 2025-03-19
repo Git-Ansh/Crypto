@@ -71,46 +71,51 @@ console.log("NODE_ENV", NODE_ENV);
 const app = express();
 
 // Set up CORS
-const productionDomains = [
-  "https://www.crypto-pilot.dev",
-  "https://crypto-pilot.dev",
-  "https://api.crypto-pilot.dev", // Add API domain
-];
+const allowedOrigins =
+  NODE_ENV === "production"
+    ? [
+        "https://www.crypto-pilot.dev",
+        "https://crypto-pilot.dev",
+        "https://app.crypto-pilot.dev",
+      ]
+    : [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5174",
+      ];
 
-// Handle CORS with multiple origins
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, etc)
-    if (!origin) return callback(null, true);
+// IMPORTANT: Apply CORS middleware BEFORE any routes
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
 
-    // Check if origin is allowed
-    if (NODE_ENV === "development") {
-      // In development, allow localhost with any port
-      if (origin.startsWith("http://localhost:")) {
-        return callback(null, true);
+      console.log("Request origin:", origin);
+
+      if (allowedOrigins.includes(origin) || NODE_ENV === "development") {
+        callback(null, true);
+      } else {
+        console.log("Origin not allowed by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
       }
-      return callback(null, true); // Allow all origins in development
-    } else {
-      // In production, check against allowed domains
-      if (productionDomains.indexOf(origin) !== -1) {
-        return callback(null, true);
-      }
-    }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Origin",
+      "X-Requested-With",
+      "Content-Type",
+      "Accept",
+      "Authorization",
+    ],
+  })
+);
 
-    callback(new Error("Not allowed by CORS"));
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Origin",
-    "X-Requested-With",
-    "Content-Type",
-    "Accept",
-    "Authorization",
-  ],
-};
+// Handle preflight OPTIONS requests explicitly
+app.options("*", cors());
 
-app.use(cors(corsOptions));
+// Rest of your middleware
 app.use(express.json());
 app.use(cookieParser());
 app.use(helmet());

@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { check, validationResult } = require("express-validator");
@@ -9,6 +10,9 @@ const RefreshToken = require("../models/RefreshTokens");
 const { encrypt, decrypt } = require("../utils/crypto");
 const crypto = require("crypto");
 const admin = require("firebase-admin");
+
+// Import your CORS configuration
+const corsOptions = require("../config/corsConfig");
 
 // Constants
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
@@ -290,7 +294,8 @@ router.post("/logout", async (req, res, next) => {
 });
 
 // ============== GOOGLE AUTH VERIFICATION ROUTE ==============
-router.post("/google-verify", async (req, res, next) => {
+router.options("/google-verify", cors(corsOptions));
+router.post("/google-verify", cors(corsOptions), async (req, res, next) => {
   try {
     const { idToken } = req.body;
     if (!idToken) {
@@ -563,7 +568,8 @@ router.get("/me", async (req, res) => {
 });
 
 // Modify the existing verify-token route to help with debugging
-router.get("/verify-token", async (req, res) => {
+router.options("/verify-token", cors(corsOptions));
+router.get("/verify-token", cors(corsOptions), async (req, res) => {
   try {
     console.log("Token verification requested");
     const authHeader = req.header("Authorization");
