@@ -1,4 +1,3 @@
-// server/models/User.js
 const mongoose = require("mongoose");
 
 const UserSchema = new mongoose.Schema({
@@ -17,7 +16,19 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    // Not required for Firebase users
+  },
+  firebaseUid: {
+    type: String,
+    sparse: true, // Allow null but enforce uniqueness when present
+    unique: true,
+  },
+  avatar: {
+    type: String,
+  },
+  paperBalance: {
+    type: Number,
+    default: 10000,
   },
   createdAt: {
     type: Date,

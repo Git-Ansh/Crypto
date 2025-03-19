@@ -157,6 +157,8 @@ const tradesRoutes = require("./routes/trades");
 const portfolioRoutes = require("./routes/portfolio");
 const botConfigRoutes = require("./routes/botConfig");
 const usersRoutes = require("./routes/users");
+const positionRoutes = require("./routes/positions");
+const botRoutes = require("./routes/bot");
 
 // Handle database connection before routing
 app.use(async (req, res, next) => {
@@ -175,7 +177,26 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/trades", tradesRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/bot-config", botConfigRoutes);
-app.use("/api/users", usersRoutes);
+app.use("/api/users", usersRoutes); // This should be the only registration for users routes
+app.use("/api/positions", positionRoutes);
+app.use("/api/bot", botRoutes);
+
+// Add a diagnostic route to check if server is running properly
+app.get("/api/status", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "Server is running properly",
+    environment: process.env.NODE_ENV,
+    routes: {
+      auth: "/api/auth/*",
+      portfolio: "/api/portfolio/*",
+      trades: "/api/trades/*",
+      positions: "/api/positions/*",
+      users: "/api/users/*",
+      bot: "/api/bot/*",
+    },
+  });
+});
 
 // Add Google Auth verification endpoint with /api prefix
 app.post("/api/auth/google-verify", async (req, res) => {
@@ -354,3 +375,6 @@ app._router.stack.forEach(function (r) {
     console.log(r.route.path);
   }
 });
+
+// Add this line to print registered user routes for debugging
+console.log("User routes registered:", Object.keys(usersRoutes.stack));

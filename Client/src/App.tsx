@@ -1,12 +1,10 @@
 import React from "react";
-import { AppRouter } from "./router";
+import { AppRoutes } from "./router";
+import AuthDebugPage from "./pages/auth-debug";
 
+// Remove the Router component since one already exists higher in the component tree
 const App: React.FC = () => {
-  return (
-    <div className="w-full h-full min-h-screen flex items-center justify-center">
-      <AppRouter />
-    </div>
-  );
+  return <AppRoutes authDebugPage={AuthDebugPage} />;
 };
 
 export default App;

@@ -58,7 +58,73 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
-export function AppRouter() {
+export const AppRoutes: React.FC<{ authDebugPage: React.ComponentType }> = ({
+  authDebugPage,
+}) => {
+  return (
+    <Routes>
+      {/* Test route - unprotected */}
+      <Route path="/test" element={<TestPage />} />
+
+      {/* Login route - only accessible when logged out */}
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <LoginForm />
+          </PublicRoute>
+        }
+      />
+
+      {/* Signup route - only accessible when logged out */}
+      <Route
+        path="/register"
+        element={
+          <PublicRoute>
+            <SignupForm />
+          </PublicRoute>
+        }
+      />
+
+      {/* Protected Dashboard route */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Redirect root based on auth status */}
+      <Route
+        path="/"
+        element={
+          <PublicRoute>
+            <Navigate to="/login" replace />
+          </PublicRoute>
+        }
+      />
+
+      {/* Catch all route - redirect to login or dashboard based on auth status */}
+      <Route
+        path="*"
+        element={
+          <PublicRoute>
+            <Navigate to="/login" replace />
+          </PublicRoute>
+        }
+      />
+
+      {/* Add the auth debug route */}
+      <Route path="/auth-debug" element={React.createElement(authDebugPage)} />
+    </Routes>
+  );
+};
+
+// If you still need the original AppRouter for some reason, you can keep it
+// but don't use it in App.tsx
+export const AppRouter = () => {
   console.log("AppRouter rendering - all routes");
   return (
     <Routes>
@@ -116,4 +182,4 @@ export function AppRouter() {
       />
     </Routes>
   );
-}
+};

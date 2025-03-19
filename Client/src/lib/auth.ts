@@ -18,6 +18,9 @@ import React, {
 } from "react";
 import { verifyGoogleAuth } from "./api";
 
+// Re-export the auth instance from firebase
+export { auth };
+
 // Define a proper type for the user
 type AuthUser = User | null;
 
@@ -167,16 +170,18 @@ export const callAuthenticatedEndpoint = async (
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`
       },
+      credentials: 'include',
       body: data ? JSON.stringify(data) : undefined
     });
 
     if (response.status === 401) {
       const responseData = await response.json();
-      // Check if token expired
-      if (responseData.message?.includes('expired')) {
-        // Refresh token and retry
+      if (
+        responseData.message?.includes('expired') ||
+        responseData.message?.includes('Firebase ID token has expired') ||
+        responseData.errorInfo?.code === 'auth/id-token-expired'
+      ) {
         const newToken = await refreshFirebaseToken();
-
         // Retry with new token
         return fetch(url, {
           method,
@@ -184,6 +189,7 @@ export const callAuthenticatedEndpoint = async (
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${newToken}`
           },
+          credentials: 'include',
           body: data ? JSON.stringify(data) : undefined
         });
       }

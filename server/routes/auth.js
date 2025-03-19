@@ -562,4 +562,316 @@ router.get("/me", async (req, res) => {
   }
 });
 
+// Modify the existing verify-token route to help with debugging
+router.get("/verify-token", async (req, res) => {
+  try {
+    console.log("Token verification requested");
+    const authHeader = req.header("Authorization");
+
+    if (!authHeader) {
+      console.log("No Authorization header found");
+      return res.status(401).json({ message: "No token provided" });
+    }
+
+    console.log("Auth header format:", authHeader.substring(0, 20) + "...");
+
+    let token;
+    if (authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    } else {
+      token = authHeader;
+    }
+
+    try {
+      // Try Firebase verification
+      const decodedFirebase = await admin.auth().verifyIdToken(token);
+      console.log(
+        "Firebase verification successful for user:",
+        decodedFirebase.uid
+      );
+
+      // Find user by Firebase UID
+      const User = require("../models/user");
+      const user = await User.findOne({ firebaseUid: decodedFirebase.uid });
+
+      return res.json({
+        valid: true,
+        message: "Token is valid",
+        uid: decodedFirebase.uid,
+        user: user ? { id: user._id } : null,
+      });
+    } catch (firebaseError) {
+      // If Firebase verification fails, try JWT
+      console.log("Firebase verification failed:", firebaseError.message);
+
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        console.log("JWT verification successful for user:", decoded.user?.id);
+        return res.json({
+          valid: true,
+          message: "JWT token is valid",
+          user: decoded.user,
+        });
+      } catch (jwtError) {
+        console.error("JWT verification failed:", jwtError.message);
+        return res.status(401).json({
+          valid: false,
+          message: "Invalid token",
+          firebaseError: firebaseError.message,
+          jwtError: jwtError.message,
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Token verification error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error during token verification" });
+  }
+});
+
+// Add this to your existing auth.js file
+
+// Debug endpoint to help diagnose token issues
+router.get("/debug-token", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: "No Authorization header provided",
+        headers: Object.keys(req.headers),
+      });
+    }
+
+    // Parse the token
+    let token;
+    if (authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    } else if (authHeader.startsWith("Firebase ")) {
+      token = authHeader.substring(9);
+    } else {
+      token = authHeader; // Assume raw token
+    }
+
+    // Try to decode the token (without verification)
+    let decoded;
+    try {
+      // Basic decoding of JWT parts
+      const parts = token.split(".");
+      if (parts.length === 3) {
+        const header = JSON.parse(Buffer.from(parts[0], "base64").toString());
+        const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+
+        decoded = { header, payload };
+      } else {
+        decoded = { error: "Not a valid JWT format" };
+      }
+    } catch (e) {
+      decoded = { error: `Error decoding: ${e.message}` };
+    }
+
+    // Try to verify with Firebase
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(token);
+
+      return res.json({
+        success: true,
+        message: "Token is valid",
+        tokenFormat: authHeader.startsWith("Bearer ")
+          ? "Bearer"
+          : authHeader.startsWith("Firebase ")
+          ? "Firebase"
+          : "Raw",
+        decodedJwt: decoded,
+        verifiedToken: decodedToken,
+      });
+    } catch (firebaseError) {
+      return res.status(401).json({
+        success: false,
+        message: "Token verification failed",
+        tokenFormat: authHeader.startsWith("Bearer ")
+          ? "Bearer"
+          : authHeader.startsWith("Firebase ")
+          ? "Firebase"
+          : "Raw",
+        decodedJwt: decoded,
+        error: firebaseError.message,
+        errorCode: firebaseError.code,
+      });
+    }
+  } catch (error) {
+    console.error("Debug token error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Add a comprehensive debug endpoint for authentication issues
+router.get("/debug-auth", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: "No Authorization header",
+        headers: Object.keys(req.headers),
+      });
+    }
+
+    // Parse token
+    let token;
+    if (authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    } else {
+      token = authHeader;
+    }
+
+    // Test both verification methods without throwing
+    let firebaseResult = { success: false };
+    let jwtResult = { success: false };
+
+    try {
+      const decodedFirebase = await admin.auth().verifyIdToken(token);
+      firebaseResult = {
+        success: true,
+        uid: decodedFirebase.uid,
+        email: decodedFirebase.email,
+      };
+
+      // Find associated user
+      const user = await User.findOne({ firebaseUid: decodedFirebase.uid });
+      if (user) {
+        firebaseResult.mongoUser = {
+          id: user._id.toString(),
+          email: user.email,
+        };
+      } else {
+        firebaseResult.mongoUser = null;
+      }
+    } catch (e) {
+      firebaseResult.error = e.message;
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      jwtResult = {
+        success: true,
+        payload: decoded,
+      };
+
+      if (decoded.user && decoded.user.id) {
+        const user = await User.findById(decoded.user.id);
+        if (user) {
+          jwtResult.mongoUser = {
+            id: user._id.toString(),
+            email: user.email,
+          };
+        } else {
+          jwtResult.mongoUser = null;
+        }
+      }
+    } catch (e) {
+      jwtResult.error = e.message;
+    }
+
+    return res.json({
+      tokenAnalysis: {
+        authHeaderType: authHeader.startsWith("Bearer ") ? "Bearer" : "Other",
+        tokenLength: token.length,
+        tokenPreview: token.substring(0, 10) + "...",
+      },
+      firebaseVerification: firebaseResult,
+      jwtVerification: jwtResult,
+      requestUrl: req.originalUrl,
+      requestPath: req.path,
+    });
+  } catch (error) {
+    console.error("Auth debug error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Add this new diagnostic route
+router.get("/token-check", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const tokenFromHeader = authHeader?.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : authHeader;
+
+    const tokenFromCookie = req.cookies?.token;
+    const tokenFromQuery = req.query?.token;
+
+    // Compare all sources
+    const sources = {
+      header: tokenFromHeader ? `${tokenFromHeader.substring(0, 10)}...` : null,
+      cookie: tokenFromCookie ? `${tokenFromCookie.substring(0, 10)}...` : null,
+      query: tokenFromQuery ? `${tokenFromQuery.substring(0, 10)}...` : null,
+    };
+
+    // Try to decode/verify each token source
+    const verificationResults = {};
+
+    for (const [source, token] of Object.entries(sources)) {
+      if (!token) {
+        verificationResults[source] = { status: "missing" };
+        continue;
+      }
+
+      try {
+        // Just decode without verification
+        const decoded = jwt.decode(token.replace(/\.\.\.$/, ""));
+
+        // Try verification
+        try {
+          const verified = jwt.verify(
+            token.replace(/\.\.\.$/, ""),
+            process.env.JWT_SECRET
+          );
+          verificationResults[source] = {
+            status: "valid",
+            decoded,
+            verified: true,
+          };
+        } catch (e) {
+          verificationResults[source] = {
+            status: "invalid",
+            decoded,
+            error: e.message,
+            verified: false,
+          };
+        }
+      } catch (e) {
+        verificationResults[source] = {
+          status: "malformed",
+          error: e.message,
+        };
+      }
+    }
+
+    res.json({
+      tokenSources: sources,
+      verification: verificationResults,
+      requestInfo: {
+        url: req.originalUrl,
+        method: req.method,
+        ip: req.ip,
+        headers: {
+          accept: req.headers.accept,
+          contentType: req.headers["content-type"],
+          userAgent: req.headers["user-agent"],
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Token check error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

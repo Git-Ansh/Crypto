@@ -1,4 +1,3 @@
-// server/models/position.js
 const mongoose = require("mongoose");
 
 const PositionSchema = new mongoose.Schema({
@@ -26,13 +25,15 @@ const PositionSchema = new mongoose.Schema({
   },
   profitLoss: {
     type: Number,
-    required: true,
     default: 0,
   },
   profitLossPercentage: {
     type: Number,
-    required: true,
     default: 0,
+  },
+  openDate: {
+    type: Date,
+    default: Date.now,
   },
   lastUpdated: {
     type: Date,

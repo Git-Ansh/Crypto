@@ -25,6 +25,18 @@ const validatePortfolioData = (snapshot) => {
   return snapshot;
 };
 
+// Add the missing calculateTotalValue function
+const calculateTotalValue = (positions) => {
+  if (!positions || !Array.isArray(positions)) {
+    return 0;
+  }
+
+  return positions.reduce((total, position) => {
+    const positionValue = position.amount * position.currentPrice;
+    return total + (isNaN(positionValue) ? 0 : positionValue);
+  }, 0);
+};
+
 // Update portfolio snapshots for all users
 async function updatePortfolioSnapshots() {
   try {

@@ -9,6 +9,7 @@ import {
   fetchBotConfig,
 } from "@/lib/api";
 import axios from "axios";
+import { axiosInstance } from "../lib/api";
 import {
   ResponsiveContainer,
   LineChart,
@@ -859,12 +860,8 @@ export default function Dashboard() {
   const fetchUserData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await axios.get(
-        `${config.api.baseUrl}/api/users/profile`,
-        {
-          withCredentials: true,
-        }
-      );
+      // Use the main profile endpoint
+      const response = await axiosInstance.get("/api/users/profile");
 
       if (response.data && response.data.createdAt) {
         console.log("Account creation date:", response.data.createdAt);
