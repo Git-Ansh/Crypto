@@ -1,4 +1,4 @@
-import { config } from "./config";
+import { config } from './config';
 import axios, {
   AxiosRequestConfig,
   InternalAxiosRequestConfig,
@@ -196,7 +196,7 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}) {
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await fetch(`${config.api.baseUrl}${endpoint}`, {
       ...options,
       headers,
       credentials: 'include',
@@ -271,7 +271,7 @@ export async function verifyGoogleAuth(idToken: string) {
     console.log("Verifying Google auth with token:", idToken.substring(0, 10) + "...");
 
     // First verify with Google
-    const response = await fetch(`${API_BASE_URL}/api/auth/google-verify`, {
+    const response = await fetch(`${config.api.baseUrl}/api/auth/google-verify`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -349,7 +349,7 @@ export async function getUserProfile() {
     console.log("Fetching user profile");
     const response = await axios({
       method: 'get',
-      url: `${API_BASE_URL}/api/users/profile`,
+      url: `${config.api.baseUrl}/api/users/profile`,
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -401,7 +401,7 @@ export async function testTokenValidity() {
     for (const format of headerFormats) {
       try {
         console.log(`Testing with ${format.name}`);
-        const response = await fetch(`${API_BASE_URL}/api/auth/verify-token`, {
+        const response = await fetch(`${config.api.baseUrl}/api/auth/verify-token`, {
           method: 'GET',
           headers: {
             'Authorization': format.header,
@@ -461,7 +461,7 @@ export async function verifyToken() {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/verify-token`, {
+    const response = await fetch(`${config.api.baseUrl}/api/auth/verify-token`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`
