@@ -1,3 +1,4 @@
+import { config } from "./config";
 import {
   GoogleAuthProvider,
   OAuthProvider,
@@ -201,3 +202,47 @@ export const callAuthenticatedEndpoint = async (
     throw error;
   }
 };
+
+// Update the loginUser function to properly handle error responses
+export async function loginUser(email: string, password: string) {
+  try {
+    console.log(`Attempting login for ${email}`);
+
+    const response = await fetch(`${config.api.baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+      credentials: 'include',
+    });
+
+    // Always parse the response body
+    const data = await response.json();
+    console.log("Login response:", response.status, data);
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.message || `Server error (${response.status})`
+      };
+    }
+
+    // Store token if available
+    if (data.token) {
+      localStorage.setItem("auth_token", data.token);
+      console.log("Token stored in localStorage");
+    }
+
+    return {
+      success: true,
+      data
+    };
+  } catch (error: any) {
+    console.error("Login error:", error);
+    return {
+      success: false,
+      error: error.message || "Network error during login"
+    };
+  }
+}

@@ -90,13 +90,30 @@ router.post(
       console.log("User Email:", userEmail);
       const user = await User.findOne({ email: userEmail });
       console.log("User:", user);
+
       if (!user) {
-        throw new CustomError("Invalid credentials", 400);
+        return res.status(404).json({
+          success: false,
+          message: "User does not exist. Please sign up instead.",
+        });
       }
 
+      // Check if this is a Google/Firebase user (no password)
+      if (user.firebaseUid && !user.password) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "This account was created with Google. Please sign in with Google instead.",
+        });
+      }
+
+      // Now we can safely compare passwords
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
-        throw new CustomError("Invalid credentials", 400);
+        return res.status(400).json({
+          success: false,
+          message: "Invalid credentials",
+        });
       }
 
       // Delete expired refresh tokens

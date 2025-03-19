@@ -83,6 +83,7 @@ export function LoginForm({
       password: "",
     });
     const [error, setError] = useState("");
+    const [showSignupPrompt, setShowSignupPrompt] = useState(false);
 
     // Use safe versions of hooks
     const location = useSafeLocation();
@@ -114,56 +115,45 @@ export function LoginForm({
     // Handle form submission for email/password login
     const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
-      setLoading((prev) => ({ ...prev, email: true }));
       setError("");
+      setShowSignupPrompt(false);
+      setLoading((prev) => ({ ...prev, email: true }));
 
       try {
+        console.log("Submitting login form:", formData.email);
         const result = await loginUser(formData.email, formData.password);
-        console.log("Login result:", result.success);
+        console.log("Login result:", result);
+
         if (result.success) {
-          console.log("Login successful. Redirecting to dashboard...");
-          toast("Login successful");
+          // Set user in context
+          if (result.data.user) {
+            setUser(result.data.user);
+          } else if (result.data.data) {
+            setUser(result.data.data);
+          }
 
-          // Format the user object according to our AuthContext's User interface
-          // Make sure we have all required fields: id, name, email
-          const userData = result.data || {};
-          const formattedUser = {
-            id: userData.id || userData.userId || userData._id || "user-id",
-            name:
-              userData.name ||
-              userData.displayName ||
-              formData.email.split("@")[0],
-            email: userData.email || formData.email,
-            avatar: userData.avatar || userData.photoURL,
-          };
-
-          // Set user in auth context with properly formatted user object
-          console.log("Setting user in auth context:", formattedUser);
-          setUser(formattedUser);
-
-          // Get redirect path from location state or default to dashboard
+          // Navigate to dashboard
           const from = location.state?.from?.pathname || "/dashboard";
-          console.log("Redirecting to:", from);
-
-          // Add a small delay to ensure state updates before navigation
-          setTimeout(() => {
-            console.log("Executing navigation to:", from);
-            navigate(from, { replace: true });
-
-            // Fallback if navigation doesn't work
-            setTimeout(() => {
-              console.log(
-                "Checking if navigation occurred, using fallback if needed"
-              );
-              if (window.location.pathname !== from) {
-                window.location.href = from;
-              }
-            }, 500);
-          }, 100);
+          navigate(from, { replace: true });
         } else {
-          setError("Login failed");
+          // Extract error message
+          const errorMsg =
+            typeof result.error === "string" ? result.error : "Login failed";
+
+          console.log("Login error message:", errorMsg);
+
+          // Check for "user does not exist" message
+          if (
+            errorMsg.includes("User does not exist") ||
+            errorMsg.includes("sign up")
+          ) {
+            setShowSignupPrompt(true);
+          }
+
+          setError(errorMsg);
         }
       } catch (err: any) {
+        console.error("Login exception:", err);
         setError(err.message || "Login failed");
       } finally {
         setLoading((prev) => ({ ...prev, email: false }));

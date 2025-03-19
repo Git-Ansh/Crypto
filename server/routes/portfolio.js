@@ -13,8 +13,10 @@ router.get("/summary", auth, async (req, res) => {
     const positions = await Position.find({ user: req.user.id });
     const user = await User.findById(req.user.id);
 
-    if (!portfolio) {
-      return res.status(404).json({ message: "Portfolio not found" });
+    console.log("User data for portfolio:", user); // Add this for debugging
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
 
     // Calculate total portfolio value
@@ -29,11 +31,11 @@ router.get("/summary", auth, async (req, res) => {
       positionsValue,
       totalValue,
       positions,
-      lastUpdated: portfolio.lastUpdated,
+      lastUpdated: portfolio ? portfolio.lastUpdated : new Date(),
     });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+  } catch (error) {
+    console.error("Error in portfolio summary:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 

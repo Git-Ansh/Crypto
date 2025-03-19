@@ -19,7 +19,10 @@ export const authAxios = axios.create({
 // Create a more advanced instance with token refresh capabilities
 export const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true
+  withCredentials: true, // Make sure this is true to send cookies
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
 // Initialize token refresh interceptors on both axios instances
@@ -171,6 +174,10 @@ export async function fetchPositions() {
     console.warn("Attempting to fetch positions without authentication");
     return Promise.reject(new Error("Authentication required"));
   }
+
+  // Log authentication status before making the request
+  console.log("Auth status for positions request:", debugAuthStatus());
+
   // Use axiosInstance instead of authAxios for token refresh ability
   return axiosInstance.get('/api/positions');
 }
@@ -217,9 +224,20 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}) {
       if (isJson) {
         const errorData = await response.json();
         console.error(`API error (${response.status}):`, errorData);
-        throw new Error(errorData.message || `Server error: ${response.status}`);
+
+        // Return the specific error message from the server
+        return {
+          success: false,
+          error: errorData.message || `Server error: ${response.status}`
+        };
       } else {
-        throw new Error(`Server error: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`API error (${response.status}):`, errorText);
+
+        return {
+          success: false,
+          error: `Server error: ${response.status}`
+        };
       }
     }
 
@@ -240,14 +258,17 @@ export async function loginUser(email: string, password: string) {
       body: JSON.stringify({ email, password }),
     });
 
+    // If the response contains an error, return it directly
+    if (response.error) {
+      console.log("Login failed with error:", response.error);
+      return { success: false, error: response.error };
+    }
+
     // Store the token if it's in the response
     if (response.token) {
       console.log("Login successful, storing auth token");
       localStorage.setItem("auth_token", response.token);
-
-      // Debug the token after storing
       debugAuthToken();
-
       return { success: true, data: response };
     } else if (response.success) {
       // If no token in response but login was successful
@@ -255,7 +276,7 @@ export async function loginUser(email: string, password: string) {
       return { success: true, data: response };
     } else {
       console.error("Login response missing token:", response);
-      return { success: false, error: "No token in response" };
+      return { success: false, error: response.error || "No token in response" };
     }
   } catch (error) {
     console.error("Login failed:", error);
@@ -666,4 +687,21 @@ export async function checkApiHealth() {
       error: error.message
     };
   }
+}
+
+// Add this debugging function to check token status
+export function debugAuthStatus() {
+  const token = localStorage.getItem("auth_token");
+  const jwtCookie = document.cookie.split(';').find(c => c.trim().startsWith('token='));
+
+  console.log("Auth debugging:");
+  console.log("- Token in localStorage:", token ? "Present" : "Missing");
+  console.log("- Token in cookies:", jwtCookie ? "Present" : "Missing");
+  console.log("- isAuthenticated() returns:", isAuthenticated());
+
+  return {
+    localStorageToken: !!token,
+    cookieToken: !!jwtCookie,
+    isAuthenticated: isAuthenticated()
+  };
 }

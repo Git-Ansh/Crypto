@@ -1,16 +1,17 @@
 "use client";
-import { ChevronDown } from "lucide-react";
+import {
+  ChevronDown,
+  RefreshCw,
+  ArrowUp,
+  ArrowDown,
+  Settings,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { AreaChart, Area } from "recharts";
 import {
-  fetchPortfolioData,
-  fetchTrades,
-  fetchPositions,
-  fetchBotConfig,
-} from "@/lib/api";
-import axios from "axios";
-import { axiosInstance } from "../lib/api";
-import {
+  AreaChart,
+  Area,
   ResponsiveContainer,
   LineChart,
   Line,
@@ -20,6 +21,16 @@ import {
   Tooltip,
 } from "recharts";
 import {
+  fetchPortfolioData,
+  fetchTrades,
+  fetchPositions,
+  fetchBotConfig,
+  isAuthenticated,
+  debugAuthStatus,
+  axiosInstance,
+} from "@/lib/api";
+import axios from "axios";
+import {
   Card,
   CardContent,
   CardHeader,
@@ -28,13 +39,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
-import {
-  RefreshCw,
-  ArrowUp,
-  ArrowDown,
-  Settings,
-  AlertTriangle,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -64,14 +68,13 @@ import {
   SidebarInset,
   SidebarRail,
 } from "@/components/ui/sidebar";
-// import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PortfolioChart } from "@/components/portfolio-chart";
 import { TradeHistory } from "@/components/trade-history";
 import { BotControl } from "@/components/bot-control";
 import { QuickTrade } from "@/components/quick-trade";
 import { Positions } from "@/components/positions";
 import { BotRoadmap } from "@/components/bot-roadmap";
-
+import { AxiosError } from "axios";
 // ================== CONFIG ENDPOINTS ==================
 const HISTORICAL_ENDPOINT =
   "https://data-api.coindesk.com/index/cc/v1/historical/hours";
@@ -147,6 +150,7 @@ interface CurrencyData {
 interface PortfolioData {
   totalValue: number;
   paperBalance: number;
+  profitLossPercentage?: number;
   dailySnapshots: PortfolioSnapshot[];
   weeklySnapshots: PortfolioSnapshot[];
   monthlySnapshots: PortfolioSnapshot[];
@@ -171,6 +175,7 @@ interface Trade {
   timestamp: string;
 }
 
+// Full Position type (if needed elsewhere)
 interface Position {
   _id: string;
   symbol: string;
@@ -182,27 +187,15 @@ interface Position {
   lastUpdated: string;
 }
 
-interface BotConfig {
-  active: boolean;
-  strategy: string;
-  riskLevel: number;
-  tradesPerDay: number;
-  autoRebalance: boolean;
-  dcaEnabled: boolean;
-  roadmap: BotRoadmapItem[];
-}
-
-interface BotRoadmapItem {
-  _id: string;
-  date: string;
-  plan: string;
-  completed: boolean;
+// For open positions in the Portfolio Overview we only need symbol and amount.
+interface SimplePosition {
+  symbol: string;
+  amount: number;
 }
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
-  const { user } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth(); // Rename to authLoading
 
   const [cryptoData, setCryptoData] = useState<CryptoInfo | null>(null);
   const [chartData, setChartData] = useState<KlineData[]>([]);
@@ -212,14 +205,12 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState<string>("");
 
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
-  // const [portfolioDateRange, setPortfolioDateRange] = useState<string>("24h");
   const [portfolioDateRange, setPortfolioDateRange] = useState<
     "24h" | "1w" | "1m" | "1y" | "all"
   >("1m");
   const [portfolioChartLoading, setPortfolioChartLoading] =
     useState<boolean>(false);
 
-  // Now define isNewUser after portfolioHistory is declared
   const isNewUser = !portfolioHistory || portfolioHistory.length === 0;
 
   // Refs
@@ -274,15 +265,24 @@ export default function Dashboard() {
     useState<string>("Bitcoin");
 
   // --- New/Extended Feature States ---
-  const [portfolioBalance, setPortfolioBalance] = useState<number>(12345.67);
-  const [portfolioProfitLoss, setPortfolioProfitLoss] = useState<number>(12.3); // in %
-  const [openPositions, setOpenPositions] = useState([
+  const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(
+    null
+  );
+  const [portfolioLoading, setPortfolioLoading] = useState<boolean>(true);
+  const [positions, setPositions] = useState<any[]>([]);
+  const [positionsLoading, setPositionsLoading] = useState<boolean>(true);
+  const [botActive, setBotActive] = useState<boolean>(true);
+  const [botStrategy, setBotStrategy] = useState<string>("Aggressive Growth");
+  const [paperBalance, setPaperBalance] = useState<number>(0);
+  const [tradesLoading, setTradesLoading] = useState<boolean>(true);
+  const [botConfigLoading, setBotConfigLoading] = useState<boolean>(true);
+  const [portfolioProfitLoss, setPortfolioProfitLoss] = useState<number>(0);
+
+  // For open positions we use the simpler type
+  const [openPositions, setOpenPositions] = useState<SimplePosition[]>([
     { symbol: "BTC", amount: 0.05 },
     { symbol: "ETH", amount: 0.8 },
   ]);
-
-  const [botActive, setBotActive] = useState<boolean>(true);
-  const [botStrategy, setBotStrategy] = useState<string>("Aggressive Growth");
 
   // Sample recent trades
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
@@ -337,37 +337,55 @@ export default function Dashboard() {
     ]);
   }, []);
 
-  // 1. First, add a new state for news data
+  // News data state
   const [newsItems, setNewsItems] = useState<any[]>([]);
   const [loadingNews, setLoadingNews] = useState<boolean>(true);
 
-  // Add these state variables inside your component
-  const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(
-    null
-  );
+  // Additional state variables
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [botConfig, setBotConfig] = useState<BotConfig | null>(null);
+  const [botConfig, setBotConfig] = useState<any>(null);
   const [timeframe, setTimeframe] = useState<
     "24h" | "1w" | "1m" | "1y" | "all"
   >("1m");
-  const [portfolioLoading, setPortfolioLoading] = useState<boolean>(true);
-  const [tradesLoading, setTradesLoading] = useState<boolean>(true);
-  const [positionsLoading, setPositionsLoading] = useState<boolean>(true);
-  const [botConfigLoading, setBotConfigLoading] = useState<boolean>(true);
   const [accountCreationDate, setAccountCreationDate] = useState<string | null>(
     null
   );
 
-  // Add these fetch functions
-
+  // Update portfolio balance and profit/loss from fetched portfolio data
+  // (Assuming the API returns these values)
+  // Fetch functions
   const fetchPortfolioDataHandler = useCallback(async () => {
     try {
       setPortfolioLoading(true);
-      const response = await fetchPortfolioData();
+
+      // Add debugging before the request
+      const authStatus = debugAuthStatus();
+      console.log("Auth status before portfolio request:", authStatus);
+
+      // Log the full request URL
+      console.log(
+        "Requesting portfolio data from:",
+        `${config.api.baseUrl}/api/portfolio/summary`
+      );
+
+      // Use axiosInstance which has the auth interceptors set up
+      const response = await axiosInstance.get(`/api/portfolio/summary`);
+
+      console.log("Portfolio data received:", response.data);
       setPortfolioData(response.data);
-    } catch (error) {
+      setPaperBalance(response.data.paperBalance || 0);
+    } catch (error: unknown) {
       console.error("Error fetching portfolio data:", error);
+
+      // Add more detailed error logging
+      if (error && typeof error === "object" && "response" in error) {
+        const axiosError = error as AxiosError;
+        if (axiosError.response) {
+          console.error("Response data:", axiosError.response.data);
+          console.error("Response status:", axiosError.response.status);
+          console.error("Response headers:", axiosError.response.headers);
+        }
+      }
     } finally {
       setPortfolioLoading(false);
     }
@@ -388,10 +406,43 @@ export default function Dashboard() {
   const fetchPositionsHandler = useCallback(async () => {
     try {
       setPositionsLoading(true);
-      const response = await fetchPositions();
+
+      // Add debugging before the request
+      const authStatus = debugAuthStatus();
+      console.log("Auth status before positions request:", authStatus);
+
+      // Use axiosInstance instead of direct axios call
+      // This ensures auth headers and interceptors are applied
+      const response = await axiosInstance.get(`/api/positions`);
+
+      console.log("Positions data received:", response.data);
       setPositions(response.data);
-    } catch (error) {
+
+      // Map response to a simpler array for distribution if necessary
+      setOpenPositions(
+        response.data.map((pos: any) => ({
+          symbol: pos.symbol,
+          amount: pos.amount,
+        }))
+      );
+    } catch (error: unknown) {
       console.error("Error fetching positions:", error);
+
+      // Add more detailed error logging
+      if (error && typeof error === "object" && "response" in error) {
+        const axiosError = error as AxiosError;
+        if (axiosError.response) {
+          console.error("Positions response data:", axiosError.response.data);
+          console.error(
+            "Positions response status:",
+            axiosError.response.status
+          );
+          console.error(
+            "Positions response headers:",
+            axiosError.response.headers
+          );
+        }
+      }
     } finally {
       setPositionsLoading(false);
     }
@@ -409,28 +460,38 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Add this useEffect to fetch data
   useEffect(() => {
-    fetchPortfolioDataHandler();
-    fetchTradesHandler();
-    fetchPositionsHandler();
-    fetchBotConfigHandler();
+    // Check if auth is still loading
+    if (authLoading) {
+      console.log("Auth state is still loading...");
+      return;
+    }
+
+    // Use the imported isAuthenticated function
+    if (isAuthenticated()) {
+      console.log("User is authenticated, fetching data...");
+      fetchPortfolioDataHandler();
+      fetchTradesHandler();
+      fetchPositionsHandler();
+      fetchBotConfigHandler();
+    } else {
+      console.log("User not authenticated, skipping data fetching");
+    }
   }, [
+    authLoading, // Updated to use authLoading
     fetchPortfolioDataHandler,
     fetchTradesHandler,
     fetchPositionsHandler,
     fetchBotConfigHandler,
   ]);
 
-  // Add this function to add funds
   const handleAddFunds = async (amount: number) => {
     try {
       await axios.post(
         `${config.api.baseUrl}/api/portfolio/add-funds`,
         { amount },
-        { withCredentials: true } // Replace 'credentials: include' with this
+        { withCredentials: true }
       );
-      // Refresh portfolio data
       fetchPortfolioDataHandler();
     } catch (error) {
       console.error("Error adding funds:", error);
@@ -468,25 +529,20 @@ export default function Dashboard() {
     try {
       setIsLoadingCurrencies(true);
       const resp = await axios.get(TOP_CURRENCIES_ENDPOINT);
-
       if (!resp.data || !resp.data.RAW) {
         throw new Error("Invalid data format from cryptocompare API");
       }
-
       console.log(
         "CryptoCompare sample data:",
         Object.keys(resp.data.RAW)[0],
         resp.data.RAW[Object.keys(resp.data.RAW)[0]].USD
       );
-
       const rawData = resp.data.RAW;
       const currencies: CurrencyData[] = [];
-
       Object.keys(rawData).forEach((symbol) => {
         const usdData = rawData[symbol].USD;
         const marketCap =
           usdData.MKTCAP || usdData.MARKET_CAP || usdData.TOTALVOLUME24HTO || 0;
-
         currencies.push({
           symbol,
           name: symbol,
@@ -497,15 +553,12 @@ export default function Dashboard() {
           lastUpdated: Date.now(),
         });
       });
-
       const top10 = currencies
         .filter((c) => c.marketCap > 0)
         .sort((a, b) => b.marketCap - a.marketCap)
         .slice(0, 10);
-
       setTopCurrencies(top10);
       setIsLoadingCurrencies(false);
-
       return true;
     } catch (err: any) {
       console.error("Error fetching top currencies:", err);
@@ -530,20 +583,17 @@ export default function Dashboard() {
         const resp = await axios.get<HistoricalResponse>(HISTORICAL_ENDPOINT, {
           params,
         });
-
         if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
           throw new Error(
             "Historical API Error: " + JSON.stringify(resp.data.Err)
           );
         }
-
         const dataArray = resp.data.Data;
         if (!Array.isArray(dataArray) || dataArray.length === 0) {
           throw new Error(
             `No historical data found for ${symbol} or unexpected structure`
           );
         }
-
         return dataArray
           .map((item: any) => ({
             timestamp: item.TIMESTAMP,
@@ -571,7 +621,6 @@ export default function Dashboard() {
         if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
           throw new Error("API Error: " + JSON.stringify(resp.data.Err));
         }
-
         const tickerItem = resp.data.Data[`${symbol}-USD`];
         if (!tickerItem || tickerItem.VALUE === undefined) {
           throw new Error(`No ${symbol}-USD tick data found`);
@@ -604,7 +653,6 @@ export default function Dashboard() {
           apply_mapping: "true",
           response_format: "JSON",
         };
-
         const resp = await axios.get(MINUTE_DATA_ENDPOINT, { params });
         if (!resp.data || resp.data.Err || !resp.data.Data) {
           throw new Error(
@@ -613,14 +661,12 @@ export default function Dashboard() {
               : "Empty response from minute data API"
           );
         }
-
         const dataArray = resp.data.Data;
         if (!Array.isArray(dataArray) || dataArray.length === 0) {
           console.warn("No minute data points in response");
           setIsLoadingMinuteData(false);
           return [];
         }
-
         const sortedData = dataArray
           .map((item: any) => ({
             timestamp: item.TIMESTAMP,
@@ -633,7 +679,6 @@ export default function Dashboard() {
             isMinuteData: true,
           }))
           .sort((a, b) => a.timestamp - b.timestamp);
-
         setMinuteDataRange({ start: startTime, end: endTime });
         setIsLoadingMinuteData(false);
         return sortedData;
@@ -651,11 +696,9 @@ export default function Dashboard() {
     if (priceBufferRef.current !== null) {
       const latestPrice = priceBufferRef.current;
       const now = Date.now();
-
       setCryptoData((prev) =>
         prev ? { ...prev, price: latestPrice } : { price: latestPrice }
       );
-
       const hourElapsed = now - lastChartUpdateRef.current >= HOUR_IN_MS;
       if (hourElapsed) {
         lastChartUpdateRef.current = now;
@@ -665,21 +708,17 @@ export default function Dashboard() {
             close: latestPrice,
             timestamp: now / 1000,
           };
-
           const historicalPoints = prev.slice(0, 24);
           const livePoints = prev.slice(24);
           const updatedLivePoints = [...livePoints, newPoint];
-
           if (updatedLivePoints.length > MAX_CHART_POINTS - 24) {
             updatedLivePoints.shift();
           }
           return [...historicalPoints, ...updatedLivePoints];
         });
       }
-
       setLastUpdated(new Date().toLocaleTimeString());
     }
-
     messageCountRef.current = 0;
     priceBufferRef.current = null;
     if (batchTimerRef.current) {
@@ -694,16 +733,12 @@ export default function Dashboard() {
         wsRef.current.close();
         wsRef.current = null;
       }
-
       const ws = new WebSocket(WS_ENDPOINT);
       wsRef.current = ws;
-
       ws.onopen = () => {
         console.log("WebSocket connected");
         setWsConnected(true);
-
         ws.send(JSON.stringify(MULTI_SUBSCRIBE_MESSAGE));
-
         const CURRENCY_SUBSCRIBE_MESSAGE = {
           action: "SUBSCRIBE",
           type: "index_cc_v1_latest_tick",
@@ -713,7 +748,6 @@ export default function Dashboard() {
         };
         ws.send(JSON.stringify(CURRENCY_SUBSCRIBE_MESSAGE));
       };
-
       ws.onmessage = (evt) => {
         try {
           const msg: WSMessage = JSON.parse(evt.data);
@@ -724,7 +758,6 @@ export default function Dashboard() {
           ) {
             const currencyPair = msg.INSTRUMENT;
             const price = msg.VALUE;
-
             if (currencyPair === `${symbol}-USD`) {
               priceBufferRef.current = price;
               messageCountRef.current += 1;
@@ -736,7 +769,6 @@ export default function Dashboard() {
                 }, BATCH_WINDOW);
               }
             }
-
             const msgSymbol = currencyPair.split("-")[0];
             setTopCurrencies((prev) =>
               prev.map((curr) =>
@@ -750,15 +782,12 @@ export default function Dashboard() {
           console.error("Error parsing WS message:", err);
         }
       };
-
       ws.onerror = (err) => {
         console.error("WebSocket error:", err);
         setWsConnected(false);
       };
-
       ws.onclose = (e) => {
         setWsConnected(false);
-        // Only attempt reconnection if not intentionally closed
         if (e.code !== 1000 && e.code !== 1001) {
           console.log(
             "WebSocket disconnected, attempting to reconnect in 5 seconds..."
@@ -777,16 +806,12 @@ export default function Dashboard() {
       try {
         setLoading(true);
         setError(null);
-
         const historical = await fetchHistoricalDataForCurrency(symbol);
         setChartData(historical);
-
         const ticker = await fetchTickerDataForCurrency(symbol);
         setCryptoData(ticker);
-
         setLastUpdated(new Date().toLocaleTimeString());
         setLoading(false);
-
         connectWebSocketForCurrency(symbol);
       } catch (err: any) {
         console.error(`Error initializing for ${symbol}:`, err);
@@ -808,11 +833,9 @@ export default function Dashboard() {
       const resp = await axios.get(
         "https://min-api.cryptocompare.com/data/v2/news/?lang=EN&categories=BTC,ETH,Regulation,Mining&excludeCategories=Sponsored&items=5"
       );
-
       if (!resp.data || !resp.data.Data) {
         throw new Error("Invalid news data format from API");
       }
-
       const newsData = resp.data.Data.map((item: any) => ({
         id: item.id,
         title: item.title,
@@ -826,7 +849,6 @@ export default function Dashboard() {
             : item.body,
         publishedAt: new Date(item.published_on * 1000).toLocaleString(),
       }));
-
       setNewsItems(newsData);
       setLoadingNews(false);
       return true;
@@ -837,14 +859,11 @@ export default function Dashboard() {
     }
   }, []);
 
-  // 4. Update initialization to fetch news as well
   useEffect(() => {
     fetchTopCurrencies().then(() => {
       initializeDashboardForCurrency("BTC");
     });
-
     fetchLatestNews();
-
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
@@ -856,13 +875,11 @@ export default function Dashboard() {
     };
   }, [fetchTopCurrencies, initializeDashboardForCurrency, fetchLatestNews]);
 
-  // Add this function to fetch user data including creation date
+  // Fetch user data including creation date
   const fetchUserData = useCallback(async () => {
     try {
       setLoading(true);
-      // Use the main profile endpoint
       const response = await axiosInstance.get("/api/users/profile");
-
       if (response.data && response.data.createdAt) {
         console.log("Account creation date:", response.data.createdAt);
         setAccountCreationDate(response.data.createdAt);
@@ -874,7 +891,6 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Call this in useEffect
   useEffect(() => {
     fetchUserData();
   }, [fetchUserData]);
@@ -898,7 +914,6 @@ export default function Dashboard() {
       setChartData([]);
       setMinuteData([]);
       setSelectedCurrency(symbol);
-
       const currencyData = topCurrencies.find((c) => c.symbol === symbol);
       if (currencyData) {
         setSelectedCurrencyName(currencyData.name || symbol);
@@ -922,7 +937,7 @@ export default function Dashboard() {
     }
   }, [fetchTickerDataForCurrency, selectedCurrency]);
 
-  // ===== Zoom/Pan via Mouse & Touch =====
+  // Zoom/Pan via Mouse & Touch
   const handleTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       if (event.touches.length === 2) {
@@ -937,7 +952,6 @@ export default function Dashboard() {
         const centerY = (t1.clientY + t2.clientY) / 2;
         const xPercent = (centerX - chartRect.left) / chartRect.width;
         const yPercent = (centerY - chartRect.top) / chartRect.height;
-
         setTouchState({
           initialDistance: distance,
           initialDomains: {
@@ -972,26 +986,22 @@ export default function Dashboard() {
           t2.clientY - t1.clientY
         );
         const zoomFactor = touchState.initialDistance / distance;
-
         const xPercent = touchState.initialDomains.centerX;
         const yPercent = touchState.initialDomains.centerY;
         const xRange =
           touchState.initialDomains.x[1] - touchState.initialDomains.x[0];
         const yRange =
           touchState.initialDomains.y[1] - touchState.initialDomains.y[0];
-
         const newXDomain: [number, number] = [
           touchState.initialDomains.x[0] - xRange * (1 - zoomFactor) * xPercent,
           touchState.initialDomains.x[1] +
             xRange * (1 - zoomFactor) * (1 - xPercent),
         ];
-
         const newYDomain: [number, number] = [
           touchState.initialDomains.y[0] -
             yRange * (1 - zoomFactor) * (1 - yPercent),
           touchState.initialDomains.y[1] + yRange * (1 - zoomFactor) * yPercent,
         ];
-
         if (zoomFactor > 1) {
           const fullXDomain = [0, chartData.length - 1];
           const fullYDomain = [
@@ -1007,7 +1017,6 @@ export default function Dashboard() {
             return handleResetZoom();
           }
         }
-
         setZoomState({
           xDomain: newXDomain,
           yDomain: newYDomain,
@@ -1021,20 +1030,16 @@ export default function Dashboard() {
         const touch = event.touches[0];
         const deltaX = touch.clientX - panState.lastMouseX;
         const deltaY = touch.clientY - panState.lastMouseY;
-
         const currentXDomain = zoomState.xDomain || [0, chartData.length - 1];
         const currentYDomain = zoomState.yDomain || [
           Math.min(...chartData.map((d) => d.close)) * 0.99,
           Math.max(...chartData.map((d) => d.close)) * 1.01,
         ];
-
         const xRange = currentXDomain[1] - currentXDomain[0];
         const yRange = currentYDomain[1] - currentYDomain[0];
-
         const chartRect = event.currentTarget.getBoundingClientRect();
         const xShift = (deltaX / chartRect.width) * xRange * -2;
         const yShift = (deltaY / chartRect.height) * yRange;
-
         let newXDomain: [number, number] = [
           currentXDomain[0] + xShift,
           currentXDomain[1] + xShift,
@@ -1043,7 +1048,6 @@ export default function Dashboard() {
           currentYDomain[0] + yShift,
           currentYDomain[1] + yShift,
         ];
-
         const fullXDomain = [0, chartData.length - 1];
         if (newXDomain[0] < fullXDomain[0]) {
           const overflow = fullXDomain[0] - newXDomain[0];
@@ -1053,7 +1057,6 @@ export default function Dashboard() {
           const overflow = newXDomain[1] - fullXDomain[1];
           newXDomain = [newXDomain[0] + overflow, fullXDomain[1]];
         }
-
         setZoomState({
           xDomain: newXDomain,
           yDomain: newYDomain,
@@ -1091,7 +1094,6 @@ export default function Dashboard() {
   const handleMouseMove = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (!panState.isPanning || !zoomState.isZoomed) return;
-
       const deltaX = event.clientX - panState.lastMouseX;
       const deltaY = event.clientY - panState.lastMouseY;
       const currentXDomain = zoomState.xDomain || [0, chartData.length - 1];
@@ -1099,16 +1101,12 @@ export default function Dashboard() {
         Math.min(...chartData.map((d) => d.close)) * 0.99,
         Math.max(...chartData.map((d) => d.close)) * 1.01,
       ];
-
       const xRange = currentXDomain[1] - currentXDomain[0];
       const yRange = currentYDomain[1] - currentYDomain[0];
-
       const chartRect = chartContainerRef.current?.getBoundingClientRect();
       if (!chartRect) return;
-
       const xShift = (deltaX / chartRect.width) * xRange * -1.5;
       const yShift = (deltaY / chartRect.height) * yRange;
-
       let newXDomain: [number, number] = [
         currentXDomain[0] + xShift,
         currentXDomain[1] + xShift,
@@ -1117,7 +1115,6 @@ export default function Dashboard() {
         currentYDomain[0] + yShift,
         currentYDomain[1] + yShift,
       ];
-
       const fullXDomain = [0, chartData.length - 1];
       if (newXDomain[0] < fullXDomain[0]) {
         const overflow = fullXDomain[0] - newXDomain[0];
@@ -1127,7 +1124,6 @@ export default function Dashboard() {
         const overflow = newXDomain[1] - fullXDomain[1];
         newXDomain = [newXDomain[0] + overflow, fullXDomain[1]];
       }
-
       setZoomState({
         xDomain: newXDomain,
         yDomain: newYDomain,
@@ -1161,10 +1157,12 @@ export default function Dashboard() {
   }, [panState.isPanning]);
 
   // ====== Portfolio Distribution and Bot Advanced Settings ======
-  const portfolioDistributionData = openPositions.map((pos) => ({
-    name: pos.symbol,
-    value: pos.amount,
-  }));
+  const portfolioDistributionData = openPositions.map(
+    (pos: SimplePosition) => ({
+      name: pos.symbol,
+      value: pos.amount,
+    })
+  );
 
   const [botRiskLevel, setBotRiskLevel] = useState<number>(50);
   const [botTradesPerDay, setBotTradesPerDay] = useState<number>(8);
@@ -1176,40 +1174,37 @@ export default function Dashboard() {
   const generatePortfolioHistory = useCallback(
     (range: string) => {
       setPortfolioChartLoading(true);
-
       let dataPoints = 24;
-      let startValue = 0;
+      let startValue = paperBalance * 0.98;
       let volatility = 0.01;
       let startDate = new Date();
-      let dateStep = 60 * 60 * 1000; // 1 hour in milliseconds
-
+      let dateStep = 60 * 60 * 1000;
       console.log("Using account creation date:", accountCreationDate);
-
       switch (range) {
         case "24h":
           dataPoints = 24;
-          startValue = portfolioBalance * 0.98;
+          startValue = paperBalance * 0.98;
           volatility = 0.005;
           startDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
           dateStep = 60 * 60 * 1000;
           break;
         case "1w":
           dataPoints = 7;
-          startValue = portfolioBalance * 0.95;
+          startValue = paperBalance * 0.95;
           volatility = 0.01;
           startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
           dateStep = 24 * 60 * 60 * 1000;
           break;
         case "1m":
           dataPoints = 30;
-          startValue = portfolioBalance * 0.9;
+          startValue = paperBalance * 0.9;
           volatility = 0.02;
           startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
           dateStep = 24 * 60 * 60 * 1000;
           break;
         case "1y":
           dataPoints = 12;
-          startValue = portfolioBalance * 0.7;
+          startValue = paperBalance * 0.7;
           volatility = 0.05;
           startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
           dateStep = 30 * 24 * 60 * 60 * 1000;
@@ -1217,55 +1212,63 @@ export default function Dashboard() {
         case "all":
         default:
           dataPoints = 24;
-          startValue = portfolioBalance * 0.4;
+          startValue = paperBalance * 0.4;
           volatility = 0.07;
-
-          // Always use account creation date for "all time" view
           if (accountCreationDate) {
             startDate = new Date(accountCreationDate);
             console.log("Using start date:", startDate);
-
-            // Calculate date step based on time between creation and now
             const totalDays = Math.max(
               1,
               (Date.now() - startDate.getTime()) / (24 * 60 * 60 * 1000)
             );
             dateStep = Math.ceil(totalDays / dataPoints) * 24 * 60 * 60 * 1000;
-
-            // Ensure we have at least one day between points
             dateStep = Math.max(dateStep, 24 * 60 * 60 * 1000);
           } else {
-            // Fallback to 3 years ago if no account creation date
             startDate = new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000);
-            dateStep = 45 * 24 * 60 * 60 * 1000; // ~45 days between points
+            dateStep = 45 * 24 * 60 * 60 * 1000;
           }
           break;
       }
-
       const data = [];
       let currentValue = startValue;
-
-      for (let i = 0; i < dataPoints; i++) {
-        const date = new Date(startDate.getTime() + i * dateStep);
-        const change = (Math.random() - 0.4) * volatility * currentValue;
-        currentValue += change;
-
-        if (i === dataPoints - 1) {
-          currentValue = portfolioBalance;
+      if (range === "all") {
+        const endDate = new Date();
+        const totalTimespan = endDate.getTime() - startDate.getTime();
+        for (let i = 0; i < dataPoints; i++) {
+          const percentage = i / (dataPoints - 1);
+          const date = new Date(
+            startDate.getTime() + percentage * totalTimespan
+          );
+          const change = (Math.random() - 0.4) * volatility * currentValue;
+          currentValue += change;
+          if (i === dataPoints - 1) {
+            currentValue = paperBalance;
+          }
+          data.push({
+            timestamp: date.toISOString(),
+            totalValue: currentValue * 0.8,
+            paperBalance: currentValue * 0.2,
+          });
         }
-
-        // Create data in the format expected by PortfolioChart
-        data.push({
-          timestamp: date.toISOString(), // Use ISO string format for consistent parsing
-          totalValue: currentValue * 0.8, // Simulate portfolio value
-          paperBalance: currentValue * 0.2, // Simulate cash balance
-        });
+      } else {
+        for (let i = 0; i < dataPoints; i++) {
+          const date = new Date(startDate.getTime() + i * dateStep);
+          const change = (Math.random() - 0.4) * volatility * currentValue;
+          currentValue += change;
+          if (i === dataPoints - 1) {
+            currentValue = paperBalance;
+          }
+          data.push({
+            timestamp: date.toISOString(),
+            totalValue: currentValue * 0.8,
+            paperBalance: currentValue * 0.2,
+          });
+        }
       }
-
       setPortfolioHistory(data);
       setPortfolioChartLoading(false);
     },
-    [portfolioBalance, accountCreationDate]
+    [paperBalance, accountCreationDate]
   );
 
   useEffect(() => {
@@ -1277,58 +1280,55 @@ export default function Dashboard() {
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
       <SidebarInset>
-        {/* Add the SidebarRail with absolute positioning */}
         <SidebarRail className="absolute top-4.5 left-4" />
-
         <style>{`
-        html, body {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-          overflow-x: hidden;
-        }
-        html::-webkit-scrollbar, 
-        body::-webkit-scrollbar {
-          display: none;
-        }
-        @keyframes glow {
-          0%, 100% { text-shadow: 0 0 10px rgba(129, 161, 255, 0.7), 0 0 20px rgba(129, 161, 255, 0.5), 0 0 30px rgba(129, 161, 255, 0.3); }
-          50% { text-shadow: 0 0 15px rgba(129, 161, 255, 0.9), 0 0 25px rgba(129, 161, 255, 0.7), 0 0 35px rgba(129, 161, 255, 0.5); }
-        }
-        .alien-text {
-          font-family: "Space Mono", monospace;
-          letter-spacing: 0.4em;
-          font-weight: 800;
-          text-transform: uppercase;
-          animation: glow 2s ease-in-out infinite;
-          background-clip: text;
-        }
-        .dark .alien-text {
-          color: rgba(200, 220, 255, 0.9);
-        }
-        .alien-text {
-          color: rgba(60, 90, 150, 0.9);
-        }
-        .loading-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 9999;
-          backdrop-filter: blur(5px);
-          transition: opacity 0.3s ease;
-        }
-        .dark .loading-overlay {
-          background-color: rgba(13, 17, 23, 0.8);
-        }
-        .light .loading-overlay {
-          background-color: rgba(255, 255, 255, 0.8);
-        }
-      `}</style>
-
+          html, body {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            overflow-x: hidden;
+          }
+          html::-webkit-scrollbar, 
+          body::-webkit-scrollbar {
+            display: none;
+          }
+          @keyframes glow {
+            0%, 100% { text-shadow: 0 0 10px rgba(129, 161, 255, 0.7), 0 0 20px rgba(129, 161, 255, 0.5), 0 0 30px rgba(129, 161, 255, 0.3); }
+            50% { text-shadow: 0 0 15px rgba(129, 161, 255, 0.9), 0 0 25px rgba(129, 161, 255, 0.7), 0 0 35px rgba(129, 161, 255, 0.5); }
+          }
+          .alien-text {
+            font-family: "Space Mono", monospace;
+            letter-spacing: 0.4em;
+            font-weight: 800;
+            text-transform: uppercase;
+            animation: glow 2s ease-in-out infinite;
+            background-clip: text;
+          }
+          .dark .alien-text {
+            color: rgba(200, 220, 255, 0.9);
+          }
+          .alien-text {
+            color: rgba(60, 90, 150, 0.9);
+          }
+          .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(5px);
+            transition: opacity 0.3s ease;
+          }
+          .dark .loading-overlay {
+            background-color: rgba(13, 17, 23, 0.8);
+          }
+          .light .loading-overlay {
+            background-color: rgba(255, 255, 255, 0.8);
+          }
+        `}</style>
         {(loading || isLoadingCurrencies) && (
           <div className="loading-overlay">
             <div className="text-center">
@@ -1338,7 +1338,6 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-
         <div
           className="w-full max-w-7xl mx-auto p-2 sm:p-4 overflow-hidden no-scrollbar"
           style={{ maxWidth: "100%" }}
@@ -1349,11 +1348,6 @@ export default function Dashboard() {
               <h1 className="text-3xl font-bold crypto-dashboard-title">
                 Crypto Pilot Dashboard
               </h1>
-              {/* <p className="text-muted-foreground mt-1">
-                {isNewUser
-                  ? `Welcome, ${user?.name || "Trader"}!`
-                  : `Welcome back, ${user?.name || "Trader"}!`}
-              </p> */}
             </div>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
               <div className="flex items-center gap-2">
@@ -1379,28 +1373,9 @@ export default function Dashboard() {
                   {loading ? "Loading" : "Refresh"}
                 </Button>
                 <ModeToggle />
-                {/* <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      await fetch(`${config.api.baseUrl}/api/auth/logout`, {
-                        method: "POST",
-                        credentials: "include", // This is correct for fetch API
-                      });
-                      await logout();
-                      navigate("/login");
-                    } catch (error) {
-                      console.error("Logout failed:", error);
-                    }
-                  }}
-                >
-                  Logout
-                </Button> */}
               </div>
             </div>
           </div>
-
           {error && (
             <Card className="mb-4 sm:mb-6 border-red-500">
               <CardContent className="p-2 sm:p-4 text-red-500 text-sm">
@@ -1408,12 +1383,11 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           )}
-
           {/* Row 1: Portfolio & Bot */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
             {/* Portfolio Overview */}
             <Card className="lg:col-span-1">
-              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardHeader className="p-3 sm:p-4 pb-0">
                 <CardTitle className="text-base sm:text-lg">
                   Portfolio Overview
                   <p className="mb-2 text-muted-foreground">
@@ -1424,40 +1398,57 @@ export default function Dashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
-                <div className="text-sm sm:text-base">
-                  <p>
-                    <strong>Balance:</strong> {formatCurrency(portfolioBalance)}
-                  </p>
-                  <p>
-                    <strong>Overall P/L:</strong>{" "}
-                    <span
-                      className={
-                        portfolioProfitLoss >= 0
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }
-                    >
-                      {portfolioProfitLoss >= 0 ? "+" : "-"}
-                      {Math.abs(portfolioProfitLoss).toFixed(2)}%
-                    </span>
-                  </p>
-                  <div className="mt-2">
-                    <strong>Open Positions:</strong>
-                    <ul className="list-disc ml-4 mt-1">
-                      {openPositions.map((pos, idx) => (
-                        <li key={idx}>
-                          {pos.symbol}: {pos.amount}
-                        </li>
-                      ))}
-                    </ul>
+                {portfolioLoading ? (
+                  <div className="flex justify-center items-center h-24">
+                    <Loader2 className="h-6 w-6 animate-spin" />
                   </div>
-                </div>
+                ) : (
+                  <div className="text-sm sm:text-base">
+                    <p>
+                      <strong>Balance:</strong>{" "}
+                      {formatCurrency(portfolioData?.paperBalance || 0)}
+                    </p>
+                    <p>
+                      <strong>Overall P/L:</strong>{" "}
+                      <span
+                        className={
+                          (portfolioData?.profitLossPercentage || 0) >= 0
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }
+                      >
+                        {(portfolioData?.profitLossPercentage || 0) >= 0
+                          ? "+"
+                          : "-"}
+                        {Math.abs(
+                          portfolioData?.profitLossPercentage || 0
+                        ).toFixed(2)}
+                        %
+                      </span>
+                    </p>
+                    <div className="mt-2">
+                      <strong>Open Positions:</strong>
+                      {positions.length === 0 ? (
+                        <p className="ml-4 mt-1 text-muted-foreground">
+                          No positions held
+                        </p>
+                      ) : (
+                        <ul className="list-disc ml-4 mt-1">
+                          {openPositions.map((pos: SimplePosition) => (
+                            <li key={pos.symbol}>
+                              {pos.symbol}: {pos.amount.toFixed(6)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
-
             {/* Bot Status & Strategy */}
             <Card className="lg:col-span-1">
-              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardHeader className="p-3 sm:p-4 pb-0">
                 <div className="flex justify-between items-center">
                   <CardTitle className="text-base sm:text-lg">
                     Bot Status & Strategy
@@ -1494,7 +1485,6 @@ export default function Dashboard() {
                       </p>
                     </div>
                   </div>
-
                   <div>
                     <Label
                       htmlFor="strategy-select"
@@ -1543,7 +1533,6 @@ export default function Dashboard() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-
                   <div className="pt-2">
                     <p className="text-sm font-medium mb-2">Bot Performance</p>
                     <div className="space-y-2">
@@ -1566,7 +1555,6 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-
                   {botShowAdvanced && (
                     <div className="pt-2 border-t">
                       <p className="text-sm font-medium mb-2">
@@ -1600,7 +1588,6 @@ export default function Dashboard() {
                             </div>
                           )}
                         </div>
-
                         <div className="flex items-center justify-between">
                           <div className="flex flex-col gap-1">
                             <Label htmlFor="auto-rebalance" className="text-xs">
@@ -1611,21 +1598,20 @@ export default function Dashboard() {
                             </span>
                           </div>
                           <div
-                            className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
+                            className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out"
                             data-state={
                               botAutoRebalance ? "checked" : "unchecked"
                             }
                             onClick={() => setBotAutoRebalance((prev) => !prev)}
                           >
                             <span
-                              className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
+                              className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg transition-transform duration-200 ease-in-out"
                               data-state={
                                 botAutoRebalance ? "checked" : "unchecked"
                               }
                             />
                           </div>
                         </div>
-
                         <div className="flex items-center justify-between">
                           <div className="flex flex-col gap-1">
                             <Label htmlFor="dca-enabled" className="text-xs">
@@ -1636,12 +1622,12 @@ export default function Dashboard() {
                             </span>
                           </div>
                           <div
-                            className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=checked]:bg-primary data-[state=unchecked]:bg-input"
+                            className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out"
                             data-state={botDCAEnabled ? "checked" : "unchecked"}
                             onClick={() => setBotDCAEnabled((prev) => !prev)}
                           >
                             <span
-                              className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ease-in-out data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
+                              className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg transition-transform duration-200 ease-in-out"
                               data-state={
                                 botDCAEnabled ? "checked" : "unchecked"
                               }
@@ -1651,7 +1637,6 @@ export default function Dashboard() {
                       </div>
                     </div>
                   )}
-
                   <div className="pt-3">
                     <Button
                       variant={botActive ? "destructive" : "default"}
@@ -1665,10 +1650,9 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
-
             {/* Portfolio Value Chart */}
             <Card className="lg:col-span-1">
-              <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+              <CardHeader className="p-3 sm:p-4 pb-0">
                 <div className="flex justify-between items-center">
                   <CardTitle className="text-base sm:text-lg">
                     Portfolio Value
@@ -1733,14 +1717,13 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </div>
-
           {/* Row 2: Ticker/Chart & Top Crypto */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
             {/* Main chart side */}
             <div className="lg:col-span-2">
               {chartData.length > 0 && (
                 <Card className="mb-3 sm:mb-4">
-                  <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+                  <CardHeader className="p-3 sm:p-4 pb-0">
                     <div className="flex flex-col sm:flex-row justify-between gap-2 w-full">
                       <div className="flex flex-col gap-1">
                         <CardTitle className="text-base sm:text-lg">
@@ -1856,7 +1839,7 @@ export default function Dashboard() {
                             strokeWidth={2}
                             dot={false}
                             activeDot={{ r: 6 }}
-                            isAnimationActive={true}
+                            isAnimationActive
                             animationBegin={0}
                             animationDuration={2000}
                             animationEasing="ease-in-out"
@@ -1882,7 +1865,6 @@ export default function Dashboard() {
                                     minute: "2-digit",
                                   }
                                 );
-
                                 let priceChangePercent = null;
                                 const currentChartData =
                                   zoomState.isZoomed && minuteData.length > 0
@@ -1902,7 +1884,6 @@ export default function Dashboard() {
                                     ((currentClose - prevClose) / prevClose) *
                                     100;
                                 }
-
                                 return (
                                   <div className="bg-background/95 backdrop-blur-sm border rounded shadow-lg p-3 text-xs">
                                     <div className="font-bold mb-1 text-sm">
@@ -2003,11 +1984,10 @@ export default function Dashboard() {
                 </Card>
               )}
             </div>
-
             {/* Top Cryptocurrencies */}
-            <div className="lg:col-span-1 lg:col-start-3 lg:row-span-0 lg:row-start-1">
+            <div className="lg:col-span-1 lg:col-start-3">
               <Card className="h-full">
-                <CardHeader className="p-3 sm:p-4 pb-0 sm:pb-0">
+                <CardHeader className="p-3 sm:p-4 pb-0">
                   <CardTitle className="text-base sm:text-lg">
                     Top 10 Cryptocurrencies
                   </CardTitle>
@@ -2099,7 +2079,6 @@ export default function Dashboard() {
               </Card>
             </div>
           </div>
-
           {/* Row 3: Quick Trade, Recent Trades, Bot Roadmap, News/Tips */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-4">
             {/* LEFT COLUMN: Quick Trade + Roadmap */}
@@ -2125,7 +2104,6 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
-
               <Card>
                 <CardHeader className="p-3 sm:p-4 pb-0">
                   <CardTitle className="text-base sm:text-lg">
@@ -2137,9 +2115,7 @@ export default function Dashboard() {
                     <Table className="w-full">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-xs whitespace-nowrap">
-                            Date
-                          </TableHead>
+                          <TableHead className="text-xs whitespace-nowrap"></TableHead>
                           <TableHead className="text-xs">Plan</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -2171,7 +2147,6 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </div>
-
             {/* RIGHT COLUMN: Recent Trades + News/Tips */}
             <div className="flex flex-col gap-4">
               <Card>
@@ -2240,7 +2215,6 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
-
               <Card>
                 <CardHeader className="p-3 sm:p-4 pb-0">
                   <CardTitle className="text-base sm:text-lg">
@@ -2301,7 +2275,6 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-
         {/* Footer / Disclaimer */}
         <div className="mt-6 text-xs text-muted-foreground">
           <p>
