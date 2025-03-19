@@ -8,7 +8,7 @@ import axios, {
 import { refreshFirebaseToken, auth } from './auth';
 import { checkIsAuthenticated } from './auth-helper'; // Import the function from auth-helper
 
-const API_BASE_URL = import.meta.env.NODE_ENV === 'production'
+const API_BASE_URL = import.meta.env.NODE_ENV !== 'development'
   ? import.meta.env.VITE_PROD_API_URL || 'https://api.crypto-pilot.dev'
   : import.meta.env.VITE_DEV_API_URL || 'http://localhost:5000';
 console.log('API_BASE_URL:', API_BASE_URL);
