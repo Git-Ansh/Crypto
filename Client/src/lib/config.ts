@@ -15,11 +15,11 @@ console.log('Is production:', isProduction);
 const API_URL = isProduction
   ? import.meta.env.VITE_PROD_API_URL || 'https://api.crypto-pilot.dev'
   : import.meta.env.VITE_DEV_API_URL || 'http://localhost:5000';
-
+console.log('API URL:', API_URL);
 const CLIENT_URL = isProduction
   ? import.meta.env.VITE_PROD_CLIENT_URL || 'https://crypto-pilot.dev'
   : import.meta.env.VITE_DEV_CLIENT_URL || 'http://localhost:5173';
-
+console.log('Client URL:', CLIENT_URL);
 export const config = {
   api: {
     baseUrl: API_URL,
