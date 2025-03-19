@@ -409,3 +409,19 @@ app._router.stack.forEach(function (r) {
 
 // Add this line to print registered user routes for debugging
 console.log("User routes registered:", Object.keys(usersRoutes.stack));
+
+// Import the CORS configuration
+const corsOptions = require("./config/corsConfig");
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// For specific routes that need their own CORS config
+app.options("/api/auth/exchange-google-token", cors(corsOptions));
+app.post(
+  "/api/auth/exchange-google-token",
+  cors(corsOptions),
+  async (req, res) => {
+    // Your existing route handler code
+  }
+);
