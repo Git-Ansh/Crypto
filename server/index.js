@@ -134,6 +134,13 @@ app.use(
   })
 );
 
+// Near the top with other imports
+const {
+  limiter,
+  authLimiter,
+  tradesLimiter,
+} = require("./middleware/rateLimiter");
+
 // Rate Limiting - only apply strict limits in production
 if (NODE_ENV === "production") {
   app.use(limiter);
