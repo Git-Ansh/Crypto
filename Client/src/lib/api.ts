@@ -11,7 +11,7 @@ import { checkIsAuthenticated } from './auth-helper'; // Import the function fro
 const API_BASE_URL = import.meta.env.NODE_ENV === 'production'
   ? import.meta.env.VITE_PROD_API_URL || 'https://api.crypto-pilot.dev'
   : import.meta.env.VITE_DEV_API_URL || 'http://localhost:5000';
-
+console.log('API_BASE_URL:', API_BASE_URL);
 // Create an authenticated axios instance
 export const authAxios = axios.create({
   baseURL: API_BASE_URL,
