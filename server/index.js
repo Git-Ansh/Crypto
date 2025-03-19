@@ -74,27 +74,43 @@ const app = express();
 const productionDomains = [
   "https://www.crypto-pilot.dev",
   "https://crypto-pilot.dev",
+  "https://api.crypto-pilot.dev", // Add API domain
 ];
-const corsOrigin =
-  NODE_ENV === "development" ? "http://localhost:5173" : productionDomains;
-console.log(`NODE_ENV: ${NODE_ENV}`);
-console.log("CORS allowed origins:", corsOrigin);
 
-// Middleware
-app.use(
-  cors({
-    origin: corsOrigin,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Origin",
-      "X-Requested-With",
-      "Content-Type",
-      "Accept",
-      "Authorization",
-    ],
-  })
-);
+// Handle CORS with multiple origins
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, etc)
+    if (!origin) return callback(null, true);
+
+    // Check if origin is allowed
+    if (NODE_ENV === "development") {
+      // In development, allow localhost with any port
+      if (origin.startsWith("http://localhost:")) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Allow all origins in development
+    } else {
+      // In production, check against allowed domains
+      if (productionDomains.indexOf(origin) !== -1) {
+        return callback(null, true);
+      }
+    }
+
+    callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Origin",
+    "X-Requested-With",
+    "Content-Type",
+    "Accept",
+    "Authorization",
+  ],
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 app.use(helmet());
