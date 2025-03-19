@@ -553,7 +553,7 @@ export function debugAuthToken() {
 export async function exchangeToken(googleToken: string) {
   try {
     console.log("Exchanging Google token for custom token");
-    const response = await fetch(`${API_BASE_URL}/api/auth/exchange-google-token`, {
+    const response = await fetch(`${config.api.baseUrl}/api/auth/exchange-google-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

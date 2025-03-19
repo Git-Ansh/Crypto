@@ -16,28 +16,26 @@ const allowedOrigins =
       ];
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-
-    console.log("Request origin:", origin);
-
-    if (allowedOrigins.includes(origin) || NODE_ENV === "development") {
-      callback(null, true);
-    } else {
-      console.log("Origin not allowed by CORS:", origin);
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
+  origin: [
+    "http://localhost:5173",
+    "https://www.crypto-pilot.dev",
+    "https://crypto-pilot.dev",
+  ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Origin",
-    "X-Requested-With",
-    "Content-Type",
-    "Accept",
-    "Authorization",
-  ],
+  allowedHeaders: ["Content-Type", "Authorization"],
 };
+
+app.use(cors(corsOptions));
+
+// Also update the specific route if it has its own CORS config
+app.options("/api/auth/exchange-google-token", cors(corsOptions));
+app.post(
+  "/api/auth/exchange-google-token",
+  cors(corsOptions),
+  async (req, res) => {
+    // Your existing route handler code
+  }
+);
 
 module.exports = corsOptions;
