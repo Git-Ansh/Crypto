@@ -10,8 +10,6 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  AreaChart,
-  Area,
   ResponsiveContainer,
   LineChart,
   Line,
@@ -20,15 +18,6 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import {
-  fetchPortfolioData,
-  fetchTrades,
-  fetchPositions,
-  fetchBotConfig,
-  isAuthenticated,
-  debugAuthStatus,
-  axiosInstance,
-} from "@/lib/api";
 import axios from "axios";
 import {
   Card,
@@ -61,7 +50,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { config } from "@/lib/config";
+//import { config } from "@/lib/config";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   SidebarProvider,
@@ -69,48 +58,46 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { PortfolioChart } from "@/components/portfolio-chart";
-import { TradeHistory } from "@/components/trade-history";
-import { BotControl } from "@/components/bot-control";
-import { QuickTrade } from "@/components/quick-trade";
-import { Positions } from "@/components/positions";
-import { BotRoadmap } from "@/components/bot-roadmap";
-import { AxiosError } from "axios";
-// ================== CONFIG ENDPOINTS ==================
-const HISTORICAL_ENDPOINT =
-  "https://data-api.coindesk.com/index/cc/v1/historical/hours";
-const MINUTE_DATA_ENDPOINT =
-  "https://data-api.coindesk.com/index/cc/v1/historical/minutes";
-const WS_ENDPOINT = "wss://data-streamer.cryptocompare.com";
-const TOP_CURRENCIES_ENDPOINT =
-  "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC,ETH,XRP,BNB,ADA,SOL,DOGE,DOT,AVAX,MATIC,LINK,SHIB&tsyms=USD";
+//import { AxiosError } from "axios";
 
-// For WebSocket multi-subscribe
-const MULTI_SUBSCRIBE_MESSAGE = {
-  action: "SUBSCRIBE",
-  type: "index_cc_v1_latest_tick",
-  market: "cadli",
-  instruments: [
-    "BTC-USD",
-    "ETH-USD",
-    "XRP-USD",
-    "BNB-USD",
-    "ADA-USD",
-    "SOL-USD",
-    "DOGE-USD",
-    "DOT-USD",
-    "AVAX-USD",
-    "MATIC-USD",
-    "LINK-USD",
-    "SHIB-USD",
-  ],
-  groups: ["VALUE", "CURRENT_HOUR"],
-};
+// ================== BITSTAMP ENDPOINTS ==================
+const BITSTAMP_REST_API = "https://www.bitstamp.net/api/v2";
+const BITSTAMP_WS_ENDPOINT = "wss://ws.bitstamp.net";
+
+// Updated endpoints for different data types using Bitstamp public API
+const TICKER_ENDPOINT = `${BITSTAMP_REST_API}/ticker`;
+const OHLC_ENDPOINT = `${BITSTAMP_REST_API}/ohlc`;
+const TRANSACTIONS_ENDPOINT = `${BITSTAMP_REST_API}/transactions`;
+
+// For top currencies we’ll fetch them individually. The currency pair will be defined as e.g. "btcusd"
+const TOP_CURRENCIES = [
+  "btcusd",
+  "ethusd",
+  "xrpusd",
+  "ltcusd",
+  "bchusd",
+  "adausd",
+  "solusd",
+  "dotusd",
+  "linkusd",
+  "maticusd",
+];
+
+// WebSocket subscription message format for Bitstamp
+const createSubscriptionMessage = (channel: string, symbol: string) => ({
+  event: "bts:subscribe",
+  data: {
+    channel: `${channel}_${symbol}`,
+  },
+});
 
 const BATCH_THRESHOLD = 5;
 const BATCH_WINDOW = 2000;
 const MAX_CHART_POINTS = 1000;
 const HOUR_IN_MS = 60 * 60 * 1000;
+const UPDATE_INTERVAL_MS = 2000; // 2 seconds
 
+// ================== INTERFACES ==================
 interface HistoricalResponse {
   Data: any[];
   Err?: Record<string, any>;
@@ -175,28 +162,24 @@ interface Trade {
   timestamp: string;
 }
 
-// Full Position type (if needed elsewhere)
-interface Position {
-  _id: string;
-  symbol: string;
-  amount: number;
-  averageEntryPrice: number;
-  currentPrice: number;
-  profitLoss: number;
-  profitLossPercentage: number;
-  lastUpdated: string;
-}
-
-// For open positions in the Portfolio Overview we only need symbol and amount.
 interface SimplePosition {
   symbol: string;
   amount: number;
 }
 
+// Add a new interface to track multiple WebSocket connections
+interface WebSocketConnection {
+  ws: WebSocket;
+  symbol: string;
+  interval: NodeJS.Timeout | null;
+}
+
+// ================== DASHBOARD COMPONENT ==================
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, logout, loading: authLoading } = useAuth(); // Rename to authLoading
+  const { user, logout, loading: authLoading } = useAuth();
 
+  // State variables
   const [cryptoData, setCryptoData] = useState<CryptoInfo | null>(null);
   const [chartData, setChartData] = useState<KlineData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -213,12 +196,27 @@ export default function Dashboard() {
 
   const isNewUser = !portfolioHistory || portfolioHistory.length === 0;
 
-  // Refs
+  // Refs for WebSocket and batching
   const wsRef = useRef<WebSocket | null>(null);
   const messageCountRef = useRef<number>(0);
-  const batchTimerRef = useRef<number | null>(null);
+  const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
   const priceBufferRef = useRef<number | null>(null);
   const lastChartUpdateRef = useRef<number>(Date.now());
+  const wsIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const socketManagerRef = useRef<{
+    isConnecting: boolean;
+    activeSymbol: string | null;
+    pendingSymbol: string | null;
+  }>({
+    isConnecting: false,
+    activeSymbol: null,
+    pendingSymbol: null,
+  });
+
+  // Add a new ref to track all WebSocket connections
+  const wsConnectionsRef = useRef<Record<string, WebSocketConnection>>({});
 
   // Zoom/Pan states
   const [zoomState, setZoomState] = useState<{
@@ -246,7 +244,7 @@ export default function Dashboard() {
     lastMouseY: number;
   }>({ isPanning: false, lastMouseX: 0, lastMouseY: 0 });
 
-  // Minute data
+  // Minute data for zoomed chart view
   const [minuteData, setMinuteData] = useState<KlineData[]>([]);
   const [isLoadingMinuteData, setIsLoadingMinuteData] =
     useState<boolean>(false);
@@ -255,16 +253,16 @@ export default function Dashboard() {
     end: number;
   } | null>(null);
 
-  // Top currencies
+  // Top currencies state (for the table)
   const [topCurrencies, setTopCurrencies] = useState<CurrencyData[]>([]);
   const [isLoadingCurrencies, setIsLoadingCurrencies] = useState<boolean>(true);
 
-  // Selected currency
+  // Selected currency state
   const [selectedCurrency, setSelectedCurrency] = useState<string>("BTC");
   const [selectedCurrencyName, setSelectedCurrencyName] =
     useState<string>("Bitcoin");
 
-  // --- New/Extended Feature States ---
+  // Other feature states (portfolio, positions, trades, bot, news)
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(
     null
   );
@@ -278,15 +276,12 @@ export default function Dashboard() {
   const [botConfigLoading, setBotConfigLoading] = useState<boolean>(true);
   const [portfolioProfitLoss, setPortfolioProfitLoss] = useState<number>(0);
 
-  // For open positions we use the simpler type
   const [openPositions, setOpenPositions] = useState<SimplePosition[]>([
     { symbol: "BTC", amount: 0.05 },
     { symbol: "ETH", amount: 0.8 },
   ]);
 
-  // Sample recent trades
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
-  // Bot Roadmap / Upcoming Actions (placeholder)
   const [botRoadmap, setBotRoadmap] = useState<any[]>([
     {
       id: 1,
@@ -300,48 +295,9 @@ export default function Dashboard() {
     },
   ]);
 
-  // News or Tips (placeholder data)
-  const [newsFeed, setNewsFeed] = useState<any[]>([
-    {
-      id: 101,
-      title: "Crypto 101: Understanding Volatility",
-      snippet: "Learn why prices rise and fall in the crypto market.",
-    },
-    {
-      id: 102,
-      title: "Trading Bot Basics",
-      snippet:
-        "An overview of how automated crypto trading strategies work under the hood.",
-    },
-  ]);
-
-  // On mount, fill in some placeholder trades
-  useEffect(() => {
-    setRecentTrades([
-      {
-        id: 1,
-        type: "BUY",
-        symbol: "BTC",
-        amount: 0.02,
-        price: 28000,
-        timestamp: new Date().toLocaleString(),
-      },
-      {
-        id: 2,
-        type: "SELL",
-        symbol: "ETH",
-        amount: 0.3,
-        price: 1800,
-        timestamp: new Date().toLocaleString(),
-      },
-    ]);
-  }, []);
-
-  // News data state
   const [newsItems, setNewsItems] = useState<any[]>([]);
   const [loadingNews, setLoadingNews] = useState<boolean>(true);
 
-  // Additional state variables
   const [trades, setTrades] = useState<Trade[]>([]);
   const [botConfig, setBotConfig] = useState<any>(null);
   const [timeframe, setTimeframe] = useState<
@@ -351,281 +307,18 @@ export default function Dashboard() {
     null
   );
 
-  // Update portfolio balance and profit/loss from fetched portfolio data
-  // (Assuming the API returns these values)
-  // Fetch functions
-  const fetchPortfolioDataHandler = useCallback(async () => {
-    try {
-      setPortfolioLoading(true);
+  // ================== FETCH FUNCTIONS ==================
 
-      // Add debugging before the request
-      const authStatus = debugAuthStatus();
-      console.log("Auth status before portfolio request:", authStatus);
-
-      // Log the full request URL
-      console.log(
-        "Requesting portfolio data from:",
-        `${config.api.baseUrl}/api/portfolio/summary`
-      );
-
-      // Use axiosInstance which has the auth interceptors set up
-      const response = await axiosInstance.get(`/api/portfolio/summary`);
-
-      console.log("Portfolio data received:", response.data);
-      setPortfolioData(response.data);
-      setPaperBalance(response.data.paperBalance || 0);
-    } catch (error: unknown) {
-      console.error("Error fetching portfolio data:", error);
-
-      // Add more detailed error logging
-      if (error && typeof error === "object" && "response" in error) {
-        const axiosError = error as AxiosError;
-        if (axiosError.response) {
-          console.error("Response data:", axiosError.response.data);
-          console.error("Response status:", axiosError.response.status);
-          console.error("Response headers:", axiosError.response.headers);
-        }
-      }
-    } finally {
-      setPortfolioLoading(false);
-    }
-  }, []);
-
-  const fetchTradesHandler = useCallback(async () => {
-    try {
-      setTradesLoading(true);
-      const response = await fetchTrades();
-      setTrades(response.data);
-    } catch (error) {
-      console.error("Error fetching trades:", error);
-    } finally {
-      setTradesLoading(false);
-    }
-  }, []);
-
-  const fetchPositionsHandler = useCallback(async () => {
-    try {
-      setPositionsLoading(true);
-
-      // Add debugging before the request
-      const authStatus = debugAuthStatus();
-      console.log("Auth status before positions request:", authStatus);
-
-      // Use axiosInstance instead of direct axios call
-      // This ensures auth headers and interceptors are applied
-      const response = await axiosInstance.get(`/api/positions`);
-
-      console.log("Positions data received:", response.data);
-      setPositions(response.data);
-
-      // Map response to a simpler array for distribution if necessary
-      setOpenPositions(
-        response.data.map((pos: any) => ({
-          symbol: pos.symbol,
-          amount: pos.amount,
-        }))
-      );
-    } catch (error: unknown) {
-      console.error("Error fetching positions:", error);
-
-      // Add more detailed error logging
-      if (error && typeof error === "object" && "response" in error) {
-        const axiosError = error as AxiosError;
-        if (axiosError.response) {
-          console.error("Positions response data:", axiosError.response.data);
-          console.error(
-            "Positions response status:",
-            axiosError.response.status
-          );
-          console.error(
-            "Positions response headers:",
-            axiosError.response.headers
-          );
-        }
-      }
-    } finally {
-      setPositionsLoading(false);
-    }
-  }, []);
-
-  const fetchBotConfigHandler = useCallback(async () => {
-    try {
-      setBotConfigLoading(true);
-      const response = await fetchBotConfig();
-      setBotConfig(response.data);
-    } catch (error) {
-      console.error("Error fetching bot config:", error);
-    } finally {
-      setBotConfigLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Check if auth is still loading
-    if (authLoading) {
-      console.log("Auth state is still loading...");
-      return;
-    }
-
-    // Use the imported isAuthenticated function
-    if (isAuthenticated()) {
-      console.log("User is authenticated, fetching data...");
-      fetchPortfolioDataHandler();
-      fetchTradesHandler();
-      fetchPositionsHandler();
-      fetchBotConfigHandler();
-    } else {
-      console.log("User not authenticated, skipping data fetching");
-    }
-  }, [
-    authLoading, // Updated to use authLoading
-    fetchPortfolioDataHandler,
-    fetchTradesHandler,
-    fetchPositionsHandler,
-    fetchBotConfigHandler,
-  ]);
-
-  const handleAddFunds = async (amount: number) => {
-    try {
-      await axios.post(
-        `${config.api.baseUrl}/api/portfolio/add-funds`,
-        { amount },
-        { withCredentials: true }
-      );
-      fetchPortfolioDataHandler();
-    } catch (error) {
-      console.error("Error adding funds:", error);
-    }
-  };
-
-  // ============== Helpers ==============
-  function formatCurrency(num: number, abbreviated: boolean = false): string {
-    if (abbreviated && num > 1000000) {
-      return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        notation: "compact",
-        compactDisplay: "short",
-        maximumFractionDigits: 2,
-      }).format(num);
-    }
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(num);
-  }
-
-  function formatTime(timestamp: number): string {
-    return new Date(timestamp).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  // ============== Top Currencies ==============
-  const fetchTopCurrencies = useCallback(async () => {
-    try {
-      setIsLoadingCurrencies(true);
-      const resp = await axios.get(TOP_CURRENCIES_ENDPOINT);
-      if (!resp.data || !resp.data.RAW) {
-        throw new Error("Invalid data format from cryptocompare API");
-      }
-      console.log(
-        "CryptoCompare sample data:",
-        Object.keys(resp.data.RAW)[0],
-        resp.data.RAW[Object.keys(resp.data.RAW)[0]].USD
-      );
-      const rawData = resp.data.RAW;
-      const currencies: CurrencyData[] = [];
-      Object.keys(rawData).forEach((symbol) => {
-        const usdData = rawData[symbol].USD;
-        const marketCap =
-          usdData.MKTCAP || usdData.MARKET_CAP || usdData.TOTALVOLUME24HTO || 0;
-        currencies.push({
-          symbol,
-          name: symbol,
-          price: usdData.PRICE || 0,
-          volume: usdData.VOLUME24HOUR || 0,
-          marketCap: marketCap,
-          change24h: usdData.CHANGEPCT24HOUR || 0,
-          lastUpdated: Date.now(),
-        });
-      });
-      const top10 = currencies
-        .filter((c) => c.marketCap > 0)
-        .sort((a, b) => b.marketCap - a.marketCap)
-        .slice(0, 10);
-      setTopCurrencies(top10);
-      setIsLoadingCurrencies(false);
-      return true;
-    } catch (err: any) {
-      console.error("Error fetching top currencies:", err);
-      setIsLoadingCurrencies(false);
-      return false;
-    }
-  }, []);
-
-  // ============== Historical & Ticker Data ==============
-  const fetchHistoricalDataForCurrency = useCallback(
-    async (symbol: string): Promise<KlineData[]> => {
-      try {
-        const params = {
-          market: "cadli",
-          instrument: `${symbol}-USD`,
-          limit: 24,
-          aggregate: 1,
-          fill: "true",
-          apply_mapping: "true",
-          response_format: "JSON",
-        };
-        const resp = await axios.get<HistoricalResponse>(HISTORICAL_ENDPOINT, {
-          params,
-        });
-        if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
-          throw new Error(
-            "Historical API Error: " + JSON.stringify(resp.data.Err)
-          );
-        }
-        const dataArray = resp.data.Data;
-        if (!Array.isArray(dataArray) || dataArray.length === 0) {
-          throw new Error(
-            `No historical data found for ${symbol} or unexpected structure`
-          );
-        }
-        return dataArray
-          .map((item: any) => ({
-            timestamp: item.TIMESTAMP,
-            time: formatTime(item.TIMESTAMP * 1000),
-            close: item.CLOSE,
-            open: item.OPEN,
-            high: item.HIGH,
-            low: item.LOW,
-            volume: item.VOLUME,
-          }))
-          .sort((a, b) => a.timestamp - b.timestamp);
-      } catch (err: any) {
-        console.error(`Error fetching historical data for ${symbol}:`, err);
-        throw new Error(`Failed to load historical data for ${symbol}`);
-      }
-    },
-    []
-  );
-
+  // Fetch ticker data for a given currency from Bitstamp
   const fetchTickerDataForCurrency = useCallback(
     async (symbol: string): Promise<CryptoInfo> => {
       try {
-        const endpoint = `https://data-api.coindesk.com/index/cc/v1/latest/tick?market=cadli&instruments=${symbol}-USD&apply_mapping=true`;
-        const resp = await axios.get(endpoint);
-        if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
-          throw new Error("API Error: " + JSON.stringify(resp.data.Err));
+        const bitstampSymbol = `${symbol.toLowerCase()}usd`;
+        const resp = await axios.get(`${TICKER_ENDPOINT}/${bitstampSymbol}`);
+        if (!resp.data || resp.data.last === undefined) {
+          throw new Error(`No ticker data found for ${symbol}`);
         }
-        const tickerItem = resp.data.Data[`${symbol}-USD`];
-        if (!tickerItem || tickerItem.VALUE === undefined) {
-          throw new Error(`No ${symbol}-USD tick data found`);
-        }
-        return { price: tickerItem.VALUE };
+        return { price: parseFloat(resp.data.last) };
       } catch (err: any) {
         console.error(`Error fetching ticker data for ${symbol}:`, err);
         throw new Error(`Failed to load current price for ${symbol}`);
@@ -634,7 +327,40 @@ export default function Dashboard() {
     []
   );
 
-  // ============== Minute Data ==============
+  // Fetch historical OHLC data for chart (1-hour resolution for the last 24 hours)
+  const fetchHistoricalDataForCurrency = useCallback(
+    async (symbol: string): Promise<KlineData[]> => {
+      try {
+        const bitstampSymbol = `${symbol.toLowerCase()}usd`;
+        const params = {
+          step: 3600, // 1 hour in seconds
+          limit: 24, // Last 24 hours
+        };
+        const resp = await axios.get(`${OHLC_ENDPOINT}/${bitstampSymbol}`, {
+          params,
+        });
+        if (!resp.data || !resp.data.data || !resp.data.data.ohlc) {
+          throw new Error(`No historical data found for ${symbol}`);
+        }
+        const dataArray = resp.data.data.ohlc;
+        return dataArray.map((item: any) => ({
+          time: new Date(item.timestamp * 1000).toLocaleTimeString(),
+          close: parseFloat(item.close),
+          timestamp: item.timestamp * 1000,
+          open: parseFloat(item.open),
+          high: parseFloat(item.high),
+          low: parseFloat(item.low),
+          volume: parseFloat(item.volume),
+        }));
+      } catch (err: any) {
+        console.error(`Error fetching historical data for ${symbol}:`, err);
+        throw new Error(`Failed to load historical data for ${symbol}`);
+      }
+    },
+    []
+  );
+
+  // Fetch minute data (1-minute resolution) – similar to the above function
   const fetchMinuteDataForCurrency = useCallback(
     async (
       symbol: string,
@@ -643,45 +369,32 @@ export default function Dashboard() {
     ): Promise<KlineData[]> => {
       try {
         setIsLoadingMinuteData(true);
+        const bitstampSymbol = `${symbol.toLowerCase()}usd`;
         const params = {
-          market: "cadli",
-          instrument: `${symbol}-USD`,
-          start_time: Math.floor(startTime / 1000),
-          end_time: Math.floor(endTime / 1000),
-          granularity: 60,
-          fill: "true",
-          apply_mapping: "true",
-          response_format: "JSON",
+          step: 60,
+          limit: 1000,
+          start: Math.floor(startTime / 1000),
+          end: Math.floor(endTime / 1000),
         };
-        const resp = await axios.get(MINUTE_DATA_ENDPOINT, { params });
-        if (!resp.data || resp.data.Err || !resp.data.Data) {
-          throw new Error(
-            resp.data.Err
-              ? "Minute Data API Error: " + JSON.stringify(resp.data.Err)
-              : "Empty response from minute data API"
-          );
+        const resp = await axios.get(`${OHLC_ENDPOINT}/${bitstampSymbol}`, {
+          params,
+        });
+        if (!resp.data || !resp.data.data || !resp.data.data.ohlc) {
+          throw new Error(`No minute data found for ${symbol}`);
         }
-        const dataArray = resp.data.Data;
-        if (!Array.isArray(dataArray) || dataArray.length === 0) {
-          console.warn("No minute data points in response");
-          setIsLoadingMinuteData(false);
-          return [];
-        }
-        const sortedData = dataArray
-          .map((item: any) => ({
-            timestamp: item.TIMESTAMP,
-            time: formatTime(item.TIMESTAMP * 1000),
-            close: item.CLOSE,
-            open: item.OPEN,
-            high: item.HIGH,
-            low: item.LOW,
-            volume: item.VOLUME,
-            isMinuteData: true,
-          }))
-          .sort((a, b) => a.timestamp - b.timestamp);
-        setMinuteDataRange({ start: startTime, end: endTime });
+        const dataArray = resp.data.data.ohlc;
+        const minuteData = dataArray.map((item: any) => ({
+          time: new Date(item.timestamp * 1000).toLocaleTimeString(),
+          close: parseFloat(item.close),
+          timestamp: item.timestamp * 1000,
+          open: parseFloat(item.open),
+          high: parseFloat(item.high),
+          low: parseFloat(item.low),
+          volume: parseFloat(item.volume),
+          isMinuteData: true,
+        }));
         setIsLoadingMinuteData(false);
-        return sortedData;
+        return minuteData;
       } catch (err: any) {
         console.error(`Error fetching minute data for ${symbol}:`, err);
         setIsLoadingMinuteData(false);
@@ -691,7 +404,46 @@ export default function Dashboard() {
     []
   );
 
-  // ============== WebSocket & Initialization ==============
+  // Fetch top currencies data by fetching ticker info for each pair
+  const fetchTopCurrencies = useCallback(async () => {
+    try {
+      setIsLoadingCurrencies(true);
+      const promises = TOP_CURRENCIES.map(async (pair) => {
+        try {
+          const resp = await axios.get(`${TICKER_ENDPOINT}/${pair}`);
+          if (!resp.data) {
+            throw new Error(
+              `Invalid data format from Bitstamp API for ${pair}`
+            );
+          }
+          const currencySymbol = pair.replace("usd", "").toUpperCase();
+          return {
+            symbol: currencySymbol,
+            name: currencySymbol,
+            price: parseFloat(resp.data.last),
+            volume: parseFloat(resp.data.volume),
+            marketCap: 0, // Bitstamp does not provide market cap
+            change24h: parseFloat(resp.data.percent_change_24) || 0,
+            lastUpdated: Date.now(),
+          };
+        } catch (err) {
+          console.error(`Error fetching data for ${pair}:`, err);
+          return null;
+        }
+      });
+      const results = await Promise.all(promises);
+      const currencies = results.filter(Boolean) as CurrencyData[];
+      setTopCurrencies(currencies);
+      setIsLoadingCurrencies(false);
+      return true;
+    } catch (err: any) {
+      console.error("Error fetching top currencies:", err);
+      setIsLoadingCurrencies(false);
+      return false;
+    }
+  }, []);
+
+  // ================== WEBSOCKET & BATCHING ==================
   const processBatch = useCallback((currencySymbol: string) => {
     if (priceBufferRef.current !== null) {
       const latestPrice = priceBufferRef.current;
@@ -699,14 +451,17 @@ export default function Dashboard() {
       setCryptoData((prev) =>
         prev ? { ...prev, price: latestPrice } : { price: latestPrice }
       );
+
+      // Update chart if an hour has passed
       const hourElapsed = now - lastChartUpdateRef.current >= HOUR_IN_MS;
       if (hourElapsed) {
         lastChartUpdateRef.current = now;
         setChartData((prev) => {
+          // Chart update logic remains the same
           const newPoint: KlineData = {
-            time: formatTime(now),
+            time: new Date(now).toLocaleTimeString(),
             close: latestPrice,
-            timestamp: now / 1000,
+            timestamp: now,
           };
           const historicalPoints = prev.slice(0, 24);
           const livePoints = prev.slice(24);
@@ -719,88 +474,252 @@ export default function Dashboard() {
       }
       setLastUpdated(new Date().toLocaleTimeString());
     }
+
+    // Reset for next batch
     messageCountRef.current = 0;
     priceBufferRef.current = null;
-    if (batchTimerRef.current) {
-      clearTimeout(batchTimerRef.current);
-      batchTimerRef.current = null;
-    }
   }, []);
 
   const connectWebSocketForCurrency = useCallback(
-    (symbol: string) => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-        wsRef.current = null;
+    (symbol: string, isMainChart: boolean = true) => {
+      // If we already have a connection for this symbol, don't create a new one
+      if (wsConnectionsRef.current[symbol]) {
+        // If this is for the main chart, update the active symbol
+        if (isMainChart) {
+          socketManagerRef.current.activeSymbol = symbol;
+        }
+        return;
       }
-      const ws = new WebSocket(WS_ENDPOINT);
-      wsRef.current = ws;
-      ws.onopen = () => {
-        console.log("WebSocket connected");
-        setWsConnected(true);
-        ws.send(JSON.stringify(MULTI_SUBSCRIBE_MESSAGE));
-        const CURRENCY_SUBSCRIBE_MESSAGE = {
-          action: "SUBSCRIBE",
-          type: "index_cc_v1_latest_tick",
-          market: "cadli",
-          instruments: [`${symbol}-USD`],
-          groups: ["VALUE", "CURRENT_HOUR"],
+
+      // Set up the WebSocket connection
+      const bitstampSymbol = `${symbol.toLowerCase()}usd`;
+
+      if (isMainChart) {
+        socketManagerRef.current.isConnecting = true;
+        socketManagerRef.current.activeSymbol = symbol;
+
+        // Close existing main chart connection if any
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+
+        // Clear main chart interval if any
+        if (wsIntervalRef.current) {
+          clearInterval(wsIntervalRef.current);
+          wsIntervalRef.current = null;
+        }
+      }
+
+      setTimeout(() => {
+        const ws = new WebSocket(BITSTAMP_WS_ENDPOINT);
+
+        // Store in the appropriate ref
+        if (isMainChart) {
+          wsRef.current = ws;
+        }
+
+        // Create a new connection entry
+        wsConnectionsRef.current[symbol] = {
+          ws,
+          symbol,
+          interval: null,
         };
-        ws.send(JSON.stringify(CURRENCY_SUBSCRIBE_MESSAGE));
-      };
-      ws.onmessage = (evt) => {
-        try {
-          const msg: WSMessage = JSON.parse(evt.data);
-          if (
-            msg.TYPE === "1101" &&
-            msg.VALUE !== undefined &&
-            msg.INSTRUMENT
-          ) {
-            const currencyPair = msg.INSTRUMENT;
-            const price = msg.VALUE;
-            if (currencyPair === `${symbol}-USD`) {
-              priceBufferRef.current = price;
-              messageCountRef.current += 1;
-              if (messageCountRef.current >= BATCH_THRESHOLD) {
-                processBatch(symbol);
-              } else if (!batchTimerRef.current) {
-                batchTimerRef.current = window.setTimeout(() => {
-                  processBatch(symbol);
-                }, BATCH_WINDOW);
-              }
+
+        // Set up connection timeout
+        const connectionTimeout = setTimeout(() => {
+          console.error(`WebSocket connection timeout for ${symbol}`);
+          ws.close();
+          if (isMainChart) {
+            setWsConnected(false);
+            socketManagerRef.current.isConnecting = false;
+          }
+          delete wsConnectionsRef.current[symbol];
+        }, 10000);
+
+        ws.onopen = () => {
+          console.log(`WebSocket connected successfully for ${symbol}`);
+          clearTimeout(connectionTimeout);
+
+          if (isMainChart) {
+            setWsConnected(true);
+            reconnectAttemptsRef.current = 0;
+            socketManagerRef.current.isConnecting = false;
+          }
+
+          try {
+            // Subscribe to live trades
+            const tradeSubscription = createSubscriptionMessage(
+              "live_trades",
+              bitstampSymbol
+            );
+            ws.send(JSON.stringify(tradeSubscription));
+            console.log(
+              `Sent trade subscription for ${symbol}:`,
+              tradeSubscription
+            );
+
+            // For main chart, also subscribe to order book
+            if (isMainChart) {
+              const orderBookSubscription = createSubscriptionMessage(
+                "order_book",
+                bitstampSymbol
+              );
+              ws.send(JSON.stringify(orderBookSubscription));
+              console.log(
+                `Sent order book subscription for ${symbol}:`,
+                orderBookSubscription
+              );
+
+              // Set up interval for regular UI updates for the main chart
+              wsIntervalRef.current = setInterval(() => {
+                // Only update if we have received price data from WebSocket
+                if (priceBufferRef.current !== null) {
+                  const latestPrice = priceBufferRef.current;
+                  setCryptoData((prev) =>
+                    prev
+                      ? { ...prev, price: latestPrice }
+                      : { price: latestPrice }
+                  );
+
+                  // Update chart if needed
+                  const now = Date.now();
+                  const hourElapsed =
+                    now - lastChartUpdateRef.current >= HOUR_IN_MS;
+                  if (hourElapsed) {
+                    lastChartUpdateRef.current = now;
+                    setChartData((prev) => {
+                      const newPoint: KlineData = {
+                        time: new Date(now).toLocaleTimeString(),
+                        close: latestPrice,
+                        timestamp: now,
+                      };
+                      const historicalPoints = prev.slice(0, 24);
+                      const livePoints = prev.slice(24);
+                      const updatedLivePoints = [...livePoints, newPoint];
+                      if (updatedLivePoints.length > MAX_CHART_POINTS - 24) {
+                        updatedLivePoints.shift();
+                      }
+                      return [...historicalPoints, ...updatedLivePoints];
+                    });
+                  }
+
+                  // Always update timestamp when we update the UI
+                  setLastUpdated(new Date().toLocaleTimeString());
+                }
+              }, UPDATE_INTERVAL_MS) as unknown as NodeJS.Timeout;
             }
-            const msgSymbol = currencyPair.split("-")[0];
-            setTopCurrencies((prev) =>
-              prev.map((curr) =>
-                curr.symbol === msgSymbol
-                  ? { ...curr, price: price, lastUpdated: Date.now() }
-                  : curr
-              )
+          } catch (err) {
+            console.error(
+              `Error setting up WebSocket subscriptions for ${symbol}:`,
+              err
             );
           }
-        } catch (err) {
-          console.error("Error parsing WS message:", err);
-        }
-      };
-      ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
-        setWsConnected(false);
-      };
-      ws.onclose = (e) => {
-        setWsConnected(false);
-        if (e.code !== 1000 && e.code !== 1001) {
+        };
+
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.event === "trade" && msg.data && msg.data.price) {
+              const price = parseFloat(msg.data.price);
+
+              // Update the price buffer for the active symbol
+              if (
+                symbol.toLowerCase() ===
+                socketManagerRef.current.activeSymbol?.toLowerCase()
+              ) {
+                priceBufferRef.current = price;
+
+                // Also update the cryptoData state directly for immediate UI update
+                setCryptoData((prev) =>
+                  prev ? { ...prev, price: price } : { price: price }
+                );
+              }
+
+              // Update top currencies table immediately for any currency
+              setTopCurrencies((prev) =>
+                prev.map((curr) =>
+                  curr.symbol.toLowerCase() === symbol.toLowerCase()
+                    ? { ...curr, price: price, lastUpdated: Date.now() }
+                    : curr
+                )
+              );
+            }
+          } catch (err) {
+            console.error(`Error parsing WS message for ${symbol}:`, err);
+          }
+        };
+
+        ws.onerror = (err) => {
+          console.error(`WebSocket error for ${symbol}:`, err);
+          if (isMainChart) {
+            setWsConnected(false);
+            socketManagerRef.current.isConnecting = false;
+          }
+          delete wsConnectionsRef.current[symbol];
+        };
+
+        ws.onclose = (e) => {
+          if (isMainChart) {
+            setWsConnected(false);
+            socketManagerRef.current.isConnecting = false;
+          }
+
+          clearTimeout(connectionTimeout);
           console.log(
-            "WebSocket disconnected, attempting to reconnect in 5 seconds..."
+            `WebSocket closed for ${symbol} with code ${e.code}, reason: ${e.reason}`
           );
-          setTimeout(() => {
-            connectWebSocketForCurrency(symbol);
-          }, 5000);
-        }
-      };
+
+          // Clear the connection from our tracking
+          delete wsConnectionsRef.current[symbol];
+
+          // Clear the update interval for main chart
+          if (isMainChart && wsIntervalRef.current) {
+            clearInterval(wsIntervalRef.current);
+            wsIntervalRef.current = null;
+          }
+
+          // Reconnect logic
+          if (e.code !== 1000 && e.code !== 1001) {
+            console.log(
+              `WebSocket disconnected abnormally for ${symbol} (code: ${e.code}), attempting to reconnect...`
+            );
+            const reconnectDelay = Math.min(
+              30000,
+              5000 * Math.pow(1.5, reconnectAttemptsRef.current)
+            );
+            if (isMainChart) {
+              reconnectAttemptsRef.current++;
+            }
+            console.log(
+              `Reconnect attempt for ${symbol} in ${reconnectDelay}ms`
+            );
+            setTimeout(() => {
+              connectWebSocketForCurrency(symbol, isMainChart);
+            }, reconnectDelay);
+          }
+        };
+      }, 1000);
     },
-    [processBatch]
+    []
   );
 
+  // Add a function to connect WebSockets for all top currencies
+  const connectAllCurrencyWebSockets = useCallback(() => {
+    TOP_CURRENCIES.forEach((pair) => {
+      const symbol = pair.replace("usd", "").toUpperCase();
+      connectWebSocketForCurrency(symbol, symbol === selectedCurrency);
+    });
+
+    // Set up a global interval to update the UI every 2 seconds
+    const globalInterval = setInterval(() => {
+      setLastUpdated(new Date().toLocaleTimeString());
+    }, UPDATE_INTERVAL_MS);
+
+    return () => clearInterval(globalInterval);
+  }, [connectWebSocketForCurrency, selectedCurrency]);
+
+  // Initialize dashboard: load historical data, ticker and connect WebSocket
   const initializeDashboardForCurrency = useCallback(
     async (symbol: string) => {
       try {
@@ -826,7 +745,7 @@ export default function Dashboard() {
     ]
   );
 
-  // 2. Fetch news from CryptoCompare
+  // Fetch latest news from a public API (for demonstration)
   const fetchLatestNews = useCallback(async () => {
     try {
       setLoadingNews(true);
@@ -859,27 +778,11 @@ export default function Dashboard() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchTopCurrencies().then(() => {
-      initializeDashboardForCurrency("BTC");
-    });
-    fetchLatestNews();
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      if (batchTimerRef.current) {
-        clearTimeout(batchTimerRef.current);
-      }
-    };
-  }, [fetchTopCurrencies, initializeDashboardForCurrency, fetchLatestNews]);
-
-  // Fetch user data including creation date
+  // Dummy fetch user data (e.g., to get account creation date)
   const fetchUserData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await axiosInstance.get("/api/users/profile");
+      const response = await axios.get("/api/users/profile");
       if (response.data && response.data.createdAt) {
         console.log("Account creation date:", response.data.createdAt);
         setAccountCreationDate(response.data.createdAt);
@@ -891,11 +794,53 @@ export default function Dashboard() {
     }
   }, []);
 
+  // On mount, load top currencies, initialize dashboard and fetch news & user data
   useEffect(() => {
-    fetchUserData();
-  }, [fetchUserData]);
+    // First fetch top currencies
+    fetchTopCurrencies().then(() => {
+      // Initialize dashboard with default currency (BTC)
+      initializeDashboardForCurrency(selectedCurrency);
 
-  // ============== Handlers ==============
+      // Then connect all WebSockets
+      const cleanup = connectAllCurrencyWebSockets();
+      return () => {
+        cleanup();
+        // Close all WebSocket connections
+        Object.values(wsConnectionsRef.current).forEach((conn) => {
+          if (conn.ws) {
+            conn.ws.close();
+          }
+          if (conn.interval) {
+            clearInterval(conn.interval);
+          }
+        });
+        wsConnectionsRef.current = {};
+
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+        if (wsIntervalRef.current) {
+          clearInterval(wsIntervalRef.current);
+          wsIntervalRef.current = null;
+        }
+        if (batchTimerRef.current) {
+          clearTimeout(batchTimerRef.current);
+        }
+      };
+    });
+    fetchLatestNews();
+    fetchUserData();
+  }, [
+    fetchTopCurrencies,
+    connectAllCurrencyWebSockets,
+    fetchLatestNews,
+    fetchUserData,
+    initializeDashboardForCurrency,
+    selectedCurrency,
+  ]);
+
+  // ================== HANDLERS ==================
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
   const handleResetZoom = useCallback(() => {
@@ -906,21 +851,60 @@ export default function Dashboard() {
 
   const handleCurrencySelect = useCallback(
     (symbol: string) => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+      // Don't reload the entire dashboard, just update what's needed
       setZoomState({ xDomain: undefined, yDomain: undefined, isZoomed: false });
-      setChartData([]);
-      setMinuteData([]);
       setSelectedCurrency(symbol);
       const currencyData = topCurrencies.find((c) => c.symbol === symbol);
       if (currencyData) {
         setSelectedCurrencyName(currencyData.name || symbol);
       }
-      initializeDashboardForCurrency(symbol);
+
+      // Update the active symbol in the socket manager
+      socketManagerRef.current.activeSymbol = symbol;
+
+      // Use existing WebSocket connection or create a new one
+      if (wsConnectionsRef.current[symbol]) {
+        // Update the main chart WebSocket reference
+        wsRef.current = wsConnectionsRef.current[symbol].ws;
+      } else {
+        // Connect a new WebSocket for this currency
+        connectWebSocketForCurrency(symbol, true);
+      }
+
+      // Fetch historical data for the new currency
+      setLoading(true);
+      fetchHistoricalDataForCurrency(symbol)
+        .then((data) => {
+          setChartData(data);
+          setLoading(false);
+        })
+        .catch((err) => {
+          console.error(`Error fetching historical data for ${symbol}:`, err);
+          setError(`Failed to load historical data for ${symbol}`);
+          setLoading(false);
+        });
+
+      // Use the current price from topCurrencies if available
+      const currentCurrency = topCurrencies.find((c) => c.symbol === symbol);
+      if (currentCurrency) {
+        setCryptoData({ price: currentCurrency.price });
+      } else {
+        // Fallback to fetching the current price
+        fetchTickerDataForCurrency(symbol)
+          .then((data) => {
+            setCryptoData(data);
+          })
+          .catch((err) => {
+            console.error(`Error fetching ticker data for ${symbol}:`, err);
+          });
+      }
     },
-    [topCurrencies, initializeDashboardForCurrency]
+    [
+      topCurrencies,
+      fetchHistoricalDataForCurrency,
+      fetchTickerDataForCurrency,
+      connectWebSocketForCurrency,
+    ]
   );
 
   const handleRefresh = useCallback(async () => {
@@ -937,7 +921,7 @@ export default function Dashboard() {
     }
   }, [fetchTickerDataForCurrency, selectedCurrency]);
 
-  // Zoom/Pan via Mouse & Touch
+  // Zoom/Pan handlers for mouse and touch events on the chart
   const handleTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       if (event.touches.length === 2) {
@@ -1141,6 +1125,7 @@ export default function Dashboard() {
   const handleMouseUp = useCallback(() => {
     setPanState((prev) => ({ ...prev, isPanning: false }));
   }, []);
+
   const handleMouseLeave = useCallback(() => {
     setPanState((prev) => ({ ...prev, isPanning: false }));
   }, []);
@@ -1156,21 +1141,7 @@ export default function Dashboard() {
     };
   }, [panState.isPanning]);
 
-  // ====== Portfolio Distribution and Bot Advanced Settings ======
-  const portfolioDistributionData = openPositions.map(
-    (pos: SimplePosition) => ({
-      name: pos.symbol,
-      value: pos.amount,
-    })
-  );
-
-  const [botRiskLevel, setBotRiskLevel] = useState<number>(50);
-  const [botTradesPerDay, setBotTradesPerDay] = useState<number>(8);
-  const [botSuccessRate, setBotSuccessRate] = useState<number>(67);
-  const [botAutoRebalance, setBotAutoRebalance] = useState<boolean>(true);
-  const [botDCAEnabled, setBotDCAEnabled] = useState<boolean>(true);
-  const [botShowAdvanced, setBotShowAdvanced] = useState<boolean>(false);
-
+  // Dummy portfolio history generator
   const generatePortfolioHistory = useCallback(
     (range: string) => {
       setPortfolioChartLoading(true);
@@ -1179,7 +1150,6 @@ export default function Dashboard() {
       let volatility = 0.01;
       let startDate = new Date();
       let dateStep = 60 * 60 * 1000;
-      console.log("Using account creation date:", accountCreationDate);
       switch (range) {
         case "24h":
           dataPoints = 24;
@@ -1216,7 +1186,6 @@ export default function Dashboard() {
           volatility = 0.07;
           if (accountCreationDate) {
             startDate = new Date(accountCreationDate);
-            console.log("Using start date:", startDate);
             const totalDays = Math.max(
               1,
               (Date.now() - startDate.getTime()) / (24 * 60 * 60 * 1000)
@@ -1275,7 +1244,15 @@ export default function Dashboard() {
     generatePortfolioHistory(portfolioDateRange);
   }, [portfolioDateRange, generatePortfolioHistory]);
 
-  // ============== Render ==============
+  // Advanced bot settings state
+  const [botRiskLevel, setBotRiskLevel] = useState<number>(50);
+  const [botTradesPerDay, setBotTradesPerDay] = useState<number>(8);
+  const [botSuccessRate, setBotSuccessRate] = useState<number>(67);
+  const [botAutoRebalance, setBotAutoRebalance] = useState<boolean>(true);
+  const [botDCAEnabled, setBotDCAEnabled] = useState<boolean>(true);
+  const [botShowAdvanced, setBotShowAdvanced] = useState<boolean>(false);
+
+  // ================== RENDER ==================
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
@@ -1406,7 +1383,9 @@ export default function Dashboard() {
                   <div className="text-sm sm:text-base">
                     <p>
                       <strong>Balance:</strong>{" "}
-                      {formatCurrency(portfolioData?.paperBalance || 0)}
+                      {portfolioData?.paperBalance
+                        ? `$${portfolioData.paperBalance.toFixed(2)}`
+                        : "$0.00"}
                     </p>
                     <p>
                       <strong>Overall P/L:</strong>{" "}
@@ -1717,9 +1696,9 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </div>
-          {/* Row 2: Ticker/Chart & Top Crypto */}
+          {/* Row 2: Ticker/Chart & Top Crypto Table */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-            {/* Main chart side */}
+            {/* Main Chart */}
             <div className="lg:col-span-2">
               {chartData.length > 0 && (
                 <Card className="mb-3 sm:mb-4">
@@ -1732,7 +1711,7 @@ export default function Dashboard() {
                         {cryptoData && (
                           <div className="flex items-center gap-2">
                             <span className="text-sm sm:text-base font-semibold">
-                              {formatCurrency(cryptoData.price)}
+                              {`$${cryptoData.price.toFixed(2)}`}
                             </span>
                             {topCurrencies.find(
                               (c) => c.symbol === selectedCurrency
@@ -1848,7 +1827,7 @@ export default function Dashboard() {
                             content={({ active, payload }) => {
                               if (active && payload && payload.length) {
                                 const data = payload[0].payload;
-                                const timestamp = data.timestamp * 1000;
+                                const timestamp = data.timestamp;
                                 const date = new Date(timestamp);
                                 const formattedDate = date.toLocaleDateString(
                                   "en-US",
@@ -1894,42 +1873,43 @@ export default function Dashboard() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                                       <div>Price:</div>
-                                      <div className="text-right font-medium">
-                                        {formatCurrency(data.close)}
-                                      </div>
+                                      <div className="text-right font-medium">{`$${data.close.toFixed(
+                                        2
+                                      )}`}</div>
                                       {data.open !== undefined && (
                                         <>
                                           <div>Open:</div>
-                                          <div className="text-right">
-                                            {formatCurrency(data.open)}
-                                          </div>
+                                          <div className="text-right">{`$${data.open.toFixed(
+                                            2
+                                          )}`}</div>
                                         </>
                                       )}
                                       {data.high !== undefined && (
                                         <>
                                           <div>High:</div>
-                                          <div className="text-right">
-                                            {formatCurrency(data.high)}
-                                          </div>
+                                          <div className="text-right">{`$${data.high.toFixed(
+                                            2
+                                          )}`}</div>
                                         </>
                                       )}
                                       {data.low !== undefined && (
                                         <>
                                           <div>Low:</div>
-                                          <div className="text-right">
-                                            {formatCurrency(data.low)}
-                                          </div>
+                                          <div className="text-right">{`$${data.low.toFixed(
+                                            2
+                                          )}`}</div>
                                         </>
                                       )}
                                       {priceChangePercent !== null && (
                                         <>
                                           <div>Change:</div>
                                           <div
-                                            className={`text-right ${
+                                            className={cn(
+                                              "text-right",
                                               priceChangePercent >= 0
                                                 ? "text-green-600"
                                                 : "text-red-600"
-                                            }`}
+                                            )}
                                           >
                                             {priceChangePercent >= 0 ? "+" : ""}
                                             {priceChangePercent.toFixed(2)}%
@@ -1940,7 +1920,7 @@ export default function Dashboard() {
                                         <>
                                           <div>Volume:</div>
                                           <div className="text-right">
-                                            {formatCurrency(data.volume, true)}
+                                            {data.volume.toFixed(2)}
                                           </div>
                                         </>
                                       )}
@@ -1976,7 +1956,7 @@ export default function Dashboard() {
                   <CardFooter className="border-t p-2 sm:p-4">
                     <div className="w-full">
                       <p className="text-[10px] sm:text-xs text-muted-foreground mb-1 sm:mb-2">
-                        Data from Coindesk API; live updates from CryptoCompare
+                        Data from Bitstamp public API; live updates via
                         WebSocket.
                       </p>
                     </div>
@@ -1984,7 +1964,7 @@ export default function Dashboard() {
                 </Card>
               )}
             </div>
-            {/* Top Cryptocurrencies */}
+            {/* Top Cryptocurrencies Table */}
             <div className="lg:col-span-1 lg:col-start-3">
               <Card className="h-full">
                 <CardHeader className="p-3 sm:p-4 pb-0">
@@ -1996,7 +1976,7 @@ export default function Dashboard() {
                   <div className="overflow-auto max-h-[450px] sm:max-h-[450px]">
                     <Table className="w-full">
                       <TableCaption className="text-[10px] sm:text-xs">
-                        Updated in real-time via WebSocket
+                        Updated in real-time via Bitstamp WebSocket
                       </TableCaption>
                       <TableHeader>
                         <TableRow>
@@ -2040,11 +2020,13 @@ export default function Dashboard() {
                               <TableCell className="font-medium text-xs py-2">
                                 {currency.symbol}
                               </TableCell>
-                              <TableCell className="text-right text-xs py-2">
-                                {formatCurrency(currency.price)}
-                              </TableCell>
+                              <TableCell className="text-right text-xs py-2">{`$${currency.price.toFixed(
+                                2
+                              )}`}</TableCell>
                               <TableCell className="text-right text-xs py-2 hidden sm:table-cell">
-                                {formatCurrency(currency.marketCap, true)}
+                                {currency.marketCap
+                                  ? `$${currency.marketCap.toFixed(2)}`
+                                  : "-"}
                               </TableCell>
                               <TableCell className="text-right text-xs py-2">
                                 <div className="flex items-center justify-end gap-1">
@@ -2062,7 +2044,7 @@ export default function Dashboard() {
                                     className={cn(
                                       "text-[10px] px-1 py-0",
                                       currency.change24h < 0 &&
-                                        "bg-red-500/10 text-red-400 dark:text-red-400 dark:bg-red-500/20"
+                                        "bg-red-500/10 text-red-400"
                                     )}
                                   >
                                     {Math.abs(currency.change24h).toFixed(1)}%
@@ -2201,9 +2183,9 @@ export default function Dashboard() {
                               <TableCell className="text-right text-xs py-2">
                                 {trade.amount}
                               </TableCell>
-                              <TableCell className="text-right text-xs py-2">
-                                {formatCurrency(trade.price)}
-                              </TableCell>
+                              <TableCell className="text-right text-xs py-2">{`$${trade.price.toFixed(
+                                2
+                              )}`}</TableCell>
                               <TableCell className="text-right text-xs py-2">
                                 {trade.timestamp}
                               </TableCell>
@@ -2274,14 +2256,14 @@ export default function Dashboard() {
               </Card>
             </div>
           </div>
-        </div>
-        {/* Footer / Disclaimer */}
-        <div className="mt-6 text-xs text-muted-foreground">
-          <p>
-            Disclaimer: This is a paper-trading bot dashboard for demonstration
-            only. It does not constitute financial advice. Always do your own
-            research.
-          </p>
+          {/* Footer / Disclaimer */}
+          <div className="mt-6 text-xs text-muted-foreground">
+            <p>
+              Disclaimer: This is a paper-trading bot dashboard for
+              demonstration only. It does not constitute financial advice.
+              Always do your own research.
+            </p>
+          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>
