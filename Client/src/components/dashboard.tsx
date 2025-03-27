@@ -76,13 +76,11 @@ import { Positions } from "@/components/positions";
 import { BotRoadmap } from "@/components/bot-roadmap";
 import { AxiosError } from "axios";
 // ================== CONFIG ENDPOINTS ==================
-const HISTORICAL_ENDPOINT =
-  "https://data-api.coindesk.com/index/cc/v1/historical/hours";
-const MINUTE_DATA_ENDPOINT =
-  "https://data-api.coindesk.com/index/cc/v1/historical/minutes";
-const WS_ENDPOINT = "wss://data-streamer.cryptocompare.com";
-const TOP_CURRENCIES_ENDPOINT =
-  "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC,ETH,XRP,BNB,ADA,SOL,DOGE,DOT,AVAX,MATIC,LINK,SHIB&tsyms=USD";
+// Replace the Coindesk/CC endpoints with Binance endpoints
+const HISTORICAL_ENDPOINT = "https://api.binance.com/api/v3/klines"; // for OHLCV data (e.g. 1h candles)
+const MINUTE_DATA_ENDPOINT = "https://api.binance.com/api/v3/klines"; // for 1m candles
+const TOP_CURRENCIES_ENDPOINT = "https://api.binance.com/api/v3/ticker/24hr"; // 24hr ticker for multiple symbols
+const WS_ENDPOINT = "wss://stream.binance.com:9443/ws";
 
 // For WebSocket multi-subscribe
 const MULTI_SUBSCRIBE_MESSAGE = {
@@ -300,21 +298,6 @@ export default function Dashboard() {
     },
   ]);
 
-  // News or Tips (placeholder data)
-  const [newsFeed, setNewsFeed] = useState<any[]>([
-    {
-      id: 101,
-      title: "Crypto 101: Understanding Volatility",
-      snippet: "Learn why prices rise and fall in the crypto market.",
-    },
-    {
-      id: 102,
-      title: "Trading Bot Basics",
-      snippet:
-        "An overview of how automated crypto trading strategies work under the hood.",
-    },
-  ]);
-
   // On mount, fill in some placeholder trades
   useEffect(() => {
     setRecentTrades([
@@ -529,34 +512,36 @@ export default function Dashboard() {
     try {
       setIsLoadingCurrencies(true);
       const resp = await axios.get(TOP_CURRENCIES_ENDPOINT);
-      if (!resp.data || !resp.data.RAW) {
-        throw new Error("Invalid data format from cryptocompare API");
+      if (!resp.data || !Array.isArray(resp.data)) {
+        throw new Error("Invalid data format from Binance API");
       }
-      console.log(
-        "CryptoCompare sample data:",
-        Object.keys(resp.data.RAW)[0],
-        resp.data.RAW[Object.keys(resp.data.RAW)[0]].USD
-      );
-      const rawData = resp.data.RAW;
-      const currencies: CurrencyData[] = [];
-      Object.keys(rawData).forEach((symbol) => {
-        const usdData = rawData[symbol].USD;
-        const marketCap =
-          usdData.MKTCAP || usdData.MARKET_CAP || usdData.TOTALVOLUME24HTO || 0;
-        currencies.push({
-          symbol,
-          name: symbol,
-          price: usdData.PRICE || 0,
-          volume: usdData.VOLUME24HOUR || 0,
-          marketCap: marketCap,
-          change24h: usdData.CHANGEPCT24HOUR || 0,
+      // Define the symbols you want to track (e.g. BTCUSDT, ETHUSDT, etc.)
+      const topSymbols = [
+        "BTCUSDT",
+        "ETHUSDT",
+        "XRPUSDT",
+        "BNBUSDT",
+        "ADAUSDT",
+        "SOLUSDT",
+        "DOGEUSDT",
+        "DOTUSDT",
+        "AVAXUSDT",
+        "MATICUSDT",
+        "LINKUSDT",
+        "SHIBUSDT",
+      ];
+      const currencies: CurrencyData[] = resp.data
+        .filter((item: any) => topSymbols.includes(item.symbol))
+        .map((item: any) => ({
+          symbol: item.symbol.replace("USDT", ""),
+          name: item.symbol.replace("USDT", ""),
+          price: Number(item.lastPrice),
+          volume: Number(item.volume),
+          marketCap: 0, // Binance does not return market cap here; you may calculate it if needed
+          change24h: Number(item.priceChangePercent),
           lastUpdated: Date.now(),
-        });
-      });
-      const top10 = currencies
-        .filter((c) => c.marketCap > 0)
-        .sort((a, b) => b.marketCap - a.marketCap)
-        .slice(0, 10);
+        }));
+      const top10 = currencies.sort((a, b) => b.price - a.price).slice(0, 10);
       setTopCurrencies(top10);
       setIsLoadingCurrencies(false);
       return true;
@@ -571,40 +556,26 @@ export default function Dashboard() {
   const fetchHistoricalDataForCurrency = useCallback(
     async (symbol: string): Promise<KlineData[]> => {
       try {
+        // Binance uses pairs like BTCUSDT – we assume USDT as fiat
         const params = {
-          market: "cadli",
-          instrument: `${symbol}-USD`,
-          limit: 24,
-          aggregate: 1,
-          fill: "true",
-          apply_mapping: "true",
-          response_format: "JSON",
+          symbol: symbol.toUpperCase() + "USDT",
+          interval: "1h",
+          limit: 24, // last 24 hours (if using 1h candles)
         };
-        const resp = await axios.get<HistoricalResponse>(HISTORICAL_ENDPOINT, {
-          params,
-        });
-        if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
-          throw new Error(
-            "Historical API Error: " + JSON.stringify(resp.data.Err)
-          );
-        }
-        const dataArray = resp.data.Data;
-        if (!Array.isArray(dataArray) || dataArray.length === 0) {
-          throw new Error(
-            `No historical data found for ${symbol} or unexpected structure`
-          );
-        }
-        return dataArray
-          .map((item: any) => ({
-            timestamp: item.TIMESTAMP,
-            time: formatTime(item.TIMESTAMP * 1000),
-            close: item.CLOSE,
-            open: item.OPEN,
-            high: item.HIGH,
-            low: item.LOW,
-            volume: item.VOLUME,
-          }))
-          .sort((a, b) => a.timestamp - b.timestamp);
+        const resp = await axios.get(HISTORICAL_ENDPOINT, { params });
+        const dataArray = resp.data;
+        // Binance returns an array of arrays:
+        // [ [openTime, open, high, low, close, volume, closeTime, ...], ... ]
+        return dataArray.map((item: any) => ({
+          timestamp: item[0] / 1000, // convert ms to seconds
+          time: formatTime(item[0]),
+          open: Number(item[1]),
+          high: Number(item[2]),
+          low: Number(item[3]),
+          close: Number(item[4]),
+          volume: Number(item[5]),
+        }));
+        //.sort((a, b) => a.timestamp - b.timestamp);
       } catch (err: any) {
         console.error(`Error fetching historical data for ${symbol}:`, err);
         throw new Error(`Failed to load historical data for ${symbol}`);
@@ -616,16 +587,13 @@ export default function Dashboard() {
   const fetchTickerDataForCurrency = useCallback(
     async (symbol: string): Promise<CryptoInfo> => {
       try {
-        const endpoint = `https://data-api.coindesk.com/index/cc/v1/latest/tick?market=cadli&instruments=${symbol}-USD&apply_mapping=true`;
-        const resp = await axios.get(endpoint);
-        if (resp.data.Err && Object.keys(resp.data.Err).length > 0) {
-          throw new Error("API Error: " + JSON.stringify(resp.data.Err));
-        }
-        const tickerItem = resp.data.Data[`${symbol}-USD`];
-        if (!tickerItem || tickerItem.VALUE === undefined) {
-          throw new Error(`No ${symbol}-USD tick data found`);
-        }
-        return { price: tickerItem.VALUE };
+        const params = {
+          symbol: symbol.toUpperCase() + "USDT",
+        };
+        const endpoint = "https://api.binance.com/api/v3/ticker/24hr";
+        const resp = await axios.get(endpoint, { params });
+        // Binance returns fields like lastPrice
+        return { price: Number(resp.data.lastPrice) };
       } catch (err: any) {
         console.error(`Error fetching ticker data for ${symbol}:`, err);
         throw new Error(`Failed to load current price for ${symbol}`);
@@ -644,24 +612,14 @@ export default function Dashboard() {
       try {
         setIsLoadingMinuteData(true);
         const params = {
-          market: "cadli",
-          instrument: `${symbol}-USD`,
-          start_time: Math.floor(startTime / 1000),
-          end_time: Math.floor(endTime / 1000),
-          granularity: 60,
-          fill: "true",
-          apply_mapping: "true",
-          response_format: "JSON",
+          symbol: symbol.toUpperCase() + "USDT",
+          interval: "1m",
+          startTime: startTime, // in ms
+          endTime: endTime, // in ms
+          limit: 1000,
         };
         const resp = await axios.get(MINUTE_DATA_ENDPOINT, { params });
-        if (!resp.data || resp.data.Err || !resp.data.Data) {
-          throw new Error(
-            resp.data.Err
-              ? "Minute Data API Error: " + JSON.stringify(resp.data.Err)
-              : "Empty response from minute data API"
-          );
-        }
-        const dataArray = resp.data.Data;
+        const dataArray = resp.data;
         if (!Array.isArray(dataArray) || dataArray.length === 0) {
           console.warn("No minute data points in response");
           setIsLoadingMinuteData(false);
@@ -669,13 +627,13 @@ export default function Dashboard() {
         }
         const sortedData = dataArray
           .map((item: any) => ({
-            timestamp: item.TIMESTAMP,
-            time: formatTime(item.TIMESTAMP * 1000),
-            close: item.CLOSE,
-            open: item.OPEN,
-            high: item.HIGH,
-            low: item.LOW,
-            volume: item.VOLUME,
+            timestamp: item[0] / 1000,
+            time: formatTime(item[0]),
+            open: Number(item[1]),
+            high: Number(item[2]),
+            low: Number(item[3]),
+            close: Number(item[4]),
+            volume: Number(item[5]),
             isMinuteData: true,
           }))
           .sort((a, b) => a.timestamp - b.timestamp);
@@ -738,27 +696,22 @@ export default function Dashboard() {
       ws.onopen = () => {
         console.log("WebSocket connected");
         setWsConnected(true);
-        ws.send(JSON.stringify(MULTI_SUBSCRIBE_MESSAGE));
-        const CURRENCY_SUBSCRIBE_MESSAGE = {
-          action: "SUBSCRIBE",
-          type: "index_cc_v1_latest_tick",
-          market: "cadli",
-          instruments: [`${symbol}-USD`],
-          groups: ["VALUE", "CURRENT_HOUR"],
+        // Subscribe to ticker updates; Binance expects a JSON message with method "SUBSCRIBE"
+        const tickerSubscription = {
+          method: "SUBSCRIBE",
+          params: [`${symbol.toLowerCase()}usdt@ticker`],
+          id: 1,
         };
-        ws.send(JSON.stringify(CURRENCY_SUBSCRIBE_MESSAGE));
+        ws.send(JSON.stringify(tickerSubscription));
       };
       ws.onmessage = (evt) => {
         try {
-          const msg: WSMessage = JSON.parse(evt.data);
-          if (
-            msg.TYPE === "1101" &&
-            msg.VALUE !== undefined &&
-            msg.INSTRUMENT
-          ) {
-            const currencyPair = msg.INSTRUMENT;
-            const price = msg.VALUE;
-            if (currencyPair === `${symbol}-USD`) {
+          const msg = JSON.parse(evt.data);
+          // Binance ticker messages include field "c" for last price and "s" for symbol
+          if (msg && msg.c && msg.s) {
+            const instrument = msg.s; // e.g., "BTCUSDT"
+            const price = Number(msg.c);
+            if (instrument === `${symbol.toUpperCase()}USDT`) {
               priceBufferRef.current = price;
               messageCountRef.current += 1;
               if (messageCountRef.current >= BATCH_THRESHOLD) {
@@ -769,10 +722,10 @@ export default function Dashboard() {
                 }, BATCH_WINDOW);
               }
             }
-            const msgSymbol = currencyPair.split("-")[0];
+            const currencySymbol = instrument.replace("USDT", "");
             setTopCurrencies((prev) =>
               prev.map((curr) =>
-                curr.symbol === msgSymbol
+                curr.symbol === currencySymbol
                   ? { ...curr, price: price, lastUpdated: Date.now() }
                   : curr
               )
