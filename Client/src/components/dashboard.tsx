@@ -81,6 +81,8 @@ const HISTORICAL_ENDPOINT = "https://api.binance.com/api/v3/klines"; // for OHLC
 const MINUTE_DATA_ENDPOINT = "https://api.binance.com/api/v3/klines"; // for 1m candles
 const TOP_CURRENCIES_ENDPOINT = "https://api.binance.com/api/v3/ticker/24hr"; // 24hr ticker for multiple symbols
 const WS_ENDPOINT = "wss://stream.binance.com:9443/ws";
+const COIN_GECKO_ENDPOINT =
+  "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,ripple,binancecoin,cardano,solana,dogecoin,polkadot,avalanche-2,matic-network,chainlink,shiba-inu&per_page=100";
 
 // For WebSocket multi-subscribe
 const MULTI_SUBSCRIBE_MESSAGE = {
@@ -511,11 +513,43 @@ export default function Dashboard() {
   const fetchTopCurrencies = useCallback(async () => {
     try {
       setIsLoadingCurrencies(true);
-      const resp = await axios.get(TOP_CURRENCIES_ENDPOINT);
-      if (!resp.data || !Array.isArray(resp.data)) {
+
+      // Get price data from Binance
+      const binanceResp = await axios.get(TOP_CURRENCIES_ENDPOINT);
+      if (!binanceResp.data || !Array.isArray(binanceResp.data)) {
         throw new Error("Invalid data format from Binance API");
       }
-      // Define the symbols you want to track (e.g. BTCUSDT, ETHUSDT, etc.)
+
+      // Get circulating supply data from CoinGecko
+      const geckoResp = await axios.get(COIN_GECKO_ENDPOINT);
+
+      // Create a mapping of symbol to circulating supply
+      const supplyMap: Record<string, number> = {};
+      const idToSymbol: Record<string, string> = {
+        bitcoin: "BTC",
+        ethereum: "ETH",
+        ripple: "XRP",
+        binancecoin: "BNB",
+        cardano: "ADA",
+        solana: "SOL",
+        dogecoin: "DOGE",
+        polkadot: "DOT",
+        "avalanche-2": "AVAX",
+        "matic-network": "MATIC",
+        chainlink: "LINK",
+        "shiba-inu": "SHIB",
+      };
+
+      if (geckoResp.data && Array.isArray(geckoResp.data)) {
+        geckoResp.data.forEach((coin: any) => {
+          const symbol = idToSymbol[coin.id];
+          if (symbol) {
+            supplyMap[symbol] = coin.circulating_supply;
+          }
+        });
+      }
+
+      // Define the symbols you want to track
       const topSymbols = [
         "BTCUSDT",
         "ETHUSDT",
@@ -530,18 +564,26 @@ export default function Dashboard() {
         "LINKUSDT",
         "SHIBUSDT",
       ];
-      const currencies: CurrencyData[] = resp.data
+
+      const currencies: CurrencyData[] = binanceResp.data
         .filter((item: any) => topSymbols.includes(item.symbol))
-        .map((item: any) => ({
-          symbol: item.symbol.replace("USDT", ""),
-          name: item.symbol.replace("USDT", ""),
-          price: Number(item.lastPrice),
-          volume: Number(item.volume),
-          marketCap: 0, // Binance does not return market cap here; you may calculate it if needed
-          change24h: Number(item.priceChangePercent),
-          lastUpdated: Date.now(),
-        }));
-      const top10 = currencies.sort((a, b) => b.price - a.price).slice(0, 10);
+        .map((item: any) => {
+          const symbol = item.symbol.replace("USDT", "");
+          const circSupply = supplyMap[symbol] || 0;
+          return {
+            symbol,
+            name: symbol,
+            price: Number(item.lastPrice),
+            volume: Number(item.volume),
+            marketCap: Number(item.lastPrice) * circSupply,
+            change24h: Number(item.priceChangePercent),
+            lastUpdated: Date.now(),
+          };
+        });
+
+      const top10 = currencies
+        .sort((a, b) => b.marketCap - a.marketCap)
+        .slice(0, 10);
       setTopCurrencies(top10);
       setIsLoadingCurrencies(false);
       return true;
