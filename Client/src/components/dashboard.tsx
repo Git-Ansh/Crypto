@@ -1943,8 +1943,8 @@ export default function Dashboard() {
                   <CardFooter className="border-t p-2 sm:p-4">
                     <div className="w-full">
                       <p className="text-[10px] sm:text-xs text-muted-foreground mb-1 sm:mb-2">
-                        Data from Coindesk API; live updates from CryptoCompare
-                        WebSocket.
+                        Data from Binance & CoinGecko API; live updates from
+                        Binance WebSocket.
                       </p>
                     </div>
                   </CardFooter>
