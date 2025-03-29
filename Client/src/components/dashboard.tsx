@@ -75,6 +75,7 @@ import { QuickTrade } from "@/components/quick-trade";
 import { Positions } from "@/components/positions";
 import { BotRoadmap } from "@/components/bot-roadmap";
 import { AxiosError } from "axios";
+
 // ================== CONFIG ENDPOINTS ==================
 // Replace the Coindesk/CC endpoints with Binance endpoints
 const HISTORICAL_ENDPOINT = "https://api.binance.com/api/v3/klines"; // for OHLCV data (e.g. 1h candles)
@@ -84,27 +85,21 @@ const WS_ENDPOINT = "wss://stream.binance.com:9443/ws";
 const COIN_GECKO_ENDPOINT =
   "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,ripple,binancecoin,cardano,solana,dogecoin,polkadot,avalanche-2,matic-network,chainlink,shiba-inu&per_page=100";
 
-// For WebSocket multi-subscribe
-const MULTI_SUBSCRIBE_MESSAGE = {
-  action: "SUBSCRIBE",
-  type: "index_cc_v1_latest_tick",
-  market: "cadli",
-  instruments: [
-    "BTC-USD",
-    "ETH-USD",
-    "XRP-USD",
-    "BNB-USD",
-    "ADA-USD",
-    "SOL-USD",
-    "DOGE-USD",
-    "DOT-USD",
-    "AVAX-USD",
-    "MATIC-USD",
-    "LINK-USD",
-    "SHIB-USD",
-  ],
-  groups: ["VALUE", "CURRENT_HOUR"],
-};
+// Define the symbols you want to track – note these are in the Binance pair format.
+const TOP_SYMBOLS = [
+  "BTCUSDT",
+  "ETHUSDT",
+  "XRPUSDT",
+  "BNBUSDT",
+  "ADAUSDT",
+  "SOLUSDT",
+  "DOGEUSDT",
+  "DOTUSDT",
+  "AVAXUSDT",
+  "MATICUSDT",
+  "LINKUSDT",
+  "SHIBUSDT",
+];
 
 const BATCH_THRESHOLD = 5;
 const BATCH_WINDOW = 2000;
@@ -195,7 +190,7 @@ interface SimplePosition {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, logout, loading: authLoading } = useAuth(); // Rename to authLoading
+  const { user, logout, loading: authLoading } = useAuth();
 
   const [cryptoData, setCryptoData] = useState<CryptoInfo | null>(null);
   const [chartData, setChartData] = useState<KlineData[]>([]);
@@ -213,12 +208,28 @@ export default function Dashboard() {
 
   const isNewUser = !portfolioHistory || portfolioHistory.length === 0;
 
-  // Refs
+  // Refs for WebSocket and batching updates
   const wsRef = useRef<WebSocket | null>(null);
   const messageCountRef = useRef<number>(0);
   const batchTimerRef = useRef<number | null>(null);
   const priceBufferRef = useRef<number | null>(null);
   const lastChartUpdateRef = useRef<number>(Date.now());
+
+  // Ref for latest prices for all currencies (to batch table updates)
+  const latestPricesRef = useRef<
+    Record<string, { price: number; lastUpdated: number }>
+  >({});
+
+  // Use a ref for the currently selected currency so that the WS handler always sees the latest value
+  const selectedCurrencyRef = useRef<string>("BTC");
+  useEffect(
+    () => {
+      selectedCurrencyRef.current = selectedCurrency;
+    },
+    [
+      /* selectedCurrency will be defined below */
+    ]
+  );
 
   // Zoom/Pan states
   const [zoomState, setZoomState] = useState<{
@@ -342,27 +353,18 @@ export default function Dashboard() {
   const fetchPortfolioDataHandler = useCallback(async () => {
     try {
       setPortfolioLoading(true);
-
-      // Add debugging before the request
       const authStatus = debugAuthStatus();
       console.log("Auth status before portfolio request:", authStatus);
-
-      // Log the full request URL
       console.log(
         "Requesting portfolio data from:",
         `${config.api.baseUrl}/api/portfolio/summary`
       );
-
-      // Use axiosInstance which has the auth interceptors set up
       const response = await axiosInstance.get(`/api/portfolio/summary`);
-
       console.log("Portfolio data received:", response.data);
       setPortfolioData(response.data);
       setPaperBalance(response.data.paperBalance || 0);
     } catch (error: unknown) {
       console.error("Error fetching portfolio data:", error);
-
-      // Add more detailed error logging
       if (error && typeof error === "object" && "response" in error) {
         const axiosError = error as AxiosError;
         if (axiosError.response) {
@@ -391,19 +393,11 @@ export default function Dashboard() {
   const fetchPositionsHandler = useCallback(async () => {
     try {
       setPositionsLoading(true);
-
-      // Add debugging before the request
       const authStatus = debugAuthStatus();
       console.log("Auth status before positions request:", authStatus);
-
-      // Use axiosInstance instead of direct axios call
-      // This ensures auth headers and interceptors are applied
       const response = await axiosInstance.get(`/api/positions`);
-
       console.log("Positions data received:", response.data);
       setPositions(response.data);
-
-      // Map response to a simpler array for distribution if necessary
       setOpenPositions(
         response.data.map((pos: any) => ({
           symbol: pos.symbol,
@@ -412,8 +406,6 @@ export default function Dashboard() {
       );
     } catch (error: unknown) {
       console.error("Error fetching positions:", error);
-
-      // Add more detailed error logging
       if (error && typeof error === "object" && "response" in error) {
         const axiosError = error as AxiosError;
         if (axiosError.response) {
@@ -446,13 +438,10 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    // Check if auth is still loading
     if (authLoading) {
       console.log("Auth state is still loading...");
       return;
     }
-
-    // Use the imported isAuthenticated function
     if (isAuthenticated()) {
       console.log("User is authenticated, fetching data...");
       fetchPortfolioDataHandler();
@@ -463,7 +452,7 @@ export default function Dashboard() {
       console.log("User not authenticated, skipping data fetching");
     }
   }, [
-    authLoading, // Updated to use authLoading
+    authLoading,
     fetchPortfolioDataHandler,
     fetchTradesHandler,
     fetchPositionsHandler,
@@ -513,17 +502,11 @@ export default function Dashboard() {
   const fetchTopCurrencies = useCallback(async () => {
     try {
       setIsLoadingCurrencies(true);
-
-      // Get price data from Binance
       const binanceResp = await axios.get(TOP_CURRENCIES_ENDPOINT);
       if (!binanceResp.data || !Array.isArray(binanceResp.data)) {
         throw new Error("Invalid data format from Binance API");
       }
-
-      // Get circulating supply data from CoinGecko
       const geckoResp = await axios.get(COIN_GECKO_ENDPOINT);
-
-      // Create a mapping of symbol to circulating supply
       const supplyMap: Record<string, number> = {};
       const idToSymbol: Record<string, string> = {
         bitcoin: "BTC",
@@ -539,7 +522,6 @@ export default function Dashboard() {
         chainlink: "LINK",
         "shiba-inu": "SHIB",
       };
-
       if (geckoResp.data && Array.isArray(geckoResp.data)) {
         geckoResp.data.forEach((coin: any) => {
           const symbol = idToSymbol[coin.id];
@@ -548,23 +530,7 @@ export default function Dashboard() {
           }
         });
       }
-
-      // Define the symbols you want to track
-      const topSymbols = [
-        "BTCUSDT",
-        "ETHUSDT",
-        "XRPUSDT",
-        "BNBUSDT",
-        "ADAUSDT",
-        "SOLUSDT",
-        "DOGEUSDT",
-        "DOTUSDT",
-        "AVAXUSDT",
-        "MATICUSDT",
-        "LINKUSDT",
-        "SHIBUSDT",
-      ];
-
+      const topSymbols = TOP_SYMBOLS;
       const currencies: CurrencyData[] = binanceResp.data
         .filter((item: any) => topSymbols.includes(item.symbol))
         .map((item: any) => {
@@ -580,7 +546,6 @@ export default function Dashboard() {
             lastUpdated: Date.now(),
           };
         });
-
       const top10 = currencies
         .sort((a, b) => b.marketCap - a.marketCap)
         .slice(0, 10);
@@ -598,18 +563,15 @@ export default function Dashboard() {
   const fetchHistoricalDataForCurrency = useCallback(
     async (symbol: string): Promise<KlineData[]> => {
       try {
-        // Binance uses pairs like BTCUSDT – we assume USDT as fiat
         const params = {
           symbol: symbol.toUpperCase() + "USDT",
           interval: "1h",
-          limit: 24, // last 24 hours (if using 1h candles)
+          limit: 24,
         };
         const resp = await axios.get(HISTORICAL_ENDPOINT, { params });
         const dataArray = resp.data;
-        // Binance returns an array of arrays:
-        // [ [openTime, open, high, low, close, volume, closeTime, ...], ... ]
         return dataArray.map((item: any) => ({
-          timestamp: item[0] / 1000, // convert ms to seconds
+          timestamp: item[0] / 1000,
           time: formatTime(item[0]),
           open: Number(item[1]),
           high: Number(item[2]),
@@ -617,7 +579,6 @@ export default function Dashboard() {
           close: Number(item[4]),
           volume: Number(item[5]),
         }));
-        //.sort((a, b) => a.timestamp - b.timestamp);
       } catch (err: any) {
         console.error(`Error fetching historical data for ${symbol}:`, err);
         throw new Error(`Failed to load historical data for ${symbol}`);
@@ -634,7 +595,6 @@ export default function Dashboard() {
         };
         const endpoint = "https://api.binance.com/api/v3/ticker/24hr";
         const resp = await axios.get(endpoint, { params });
-        // Binance returns fields like lastPrice
         return { price: Number(resp.data.lastPrice) };
       } catch (err: any) {
         console.error(`Error fetching ticker data for ${symbol}:`, err);
@@ -656,8 +616,8 @@ export default function Dashboard() {
         const params = {
           symbol: symbol.toUpperCase() + "USDT",
           interval: "1m",
-          startTime: startTime, // in ms
-          endTime: endTime, // in ms
+          startTime: startTime,
+          endTime: endTime,
           limit: 1000,
         };
         const resp = await axios.get(MINUTE_DATA_ENDPOINT, { params });
@@ -692,7 +652,8 @@ export default function Dashboard() {
   );
 
   // ============== WebSocket & Initialization ==============
-  const processBatch = useCallback((currencySymbol: string) => {
+  // Process batch for selected currency chart updates
+  const processBatch = useCallback(() => {
     if (priceBufferRef.current !== null) {
       const latestPrice = priceBufferRef.current;
       const now = Date.now();
@@ -727,75 +688,86 @@ export default function Dashboard() {
     }
   }, []);
 
-  const connectWebSocketForCurrency = useCallback(
-    (symbol: string) => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      const ws = new WebSocket(WS_ENDPOINT);
-      wsRef.current = ws;
-      ws.onopen = () => {
-        console.log("WebSocket connected");
-        setWsConnected(true);
-        // Subscribe to ticker updates; Binance expects a JSON message with method "SUBSCRIBE"
-        const tickerSubscription = {
-          method: "SUBSCRIBE",
-          params: [`${symbol.toLowerCase()}usdt@ticker`],
-          id: 1,
-        };
-        ws.send(JSON.stringify(tickerSubscription));
+  // Global WebSocket connection that subscribes to all top tickers
+  const connectWebSocketAll = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+    const ws = new WebSocket(WS_ENDPOINT);
+    wsRef.current = ws;
+    ws.onopen = () => {
+      console.log("WebSocket connected");
+      setWsConnected(true);
+      const subscriptionMessage = {
+        method: "SUBSCRIBE",
+        params: TOP_SYMBOLS.map((symbol) => symbol.toLowerCase() + "@ticker"),
+        id: 1,
       };
-      ws.onmessage = (evt) => {
-        try {
-          const msg = JSON.parse(evt.data);
-          // Binance ticker messages include field "c" for last price and "s" for symbol
-          if (msg && msg.c && msg.s) {
-            const instrument = msg.s; // e.g., "BTCUSDT"
-            const price = Number(msg.c);
-            if (instrument === `${symbol.toUpperCase()}USDT`) {
-              priceBufferRef.current = price;
-              messageCountRef.current += 1;
-              if (messageCountRef.current >= BATCH_THRESHOLD) {
-                processBatch(symbol);
-              } else if (!batchTimerRef.current) {
-                batchTimerRef.current = window.setTimeout(() => {
-                  processBatch(symbol);
-                }, BATCH_WINDOW);
-              }
+      ws.send(JSON.stringify(subscriptionMessage));
+    };
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg && msg.c && msg.s) {
+          const instrument = msg.s; // e.g., "BTCUSDT"
+          const price = Number(msg.c);
+          const currencySymbol = instrument.replace("USDT", "");
+          // Update the latest price in a ref (for table updates)
+          latestPricesRef.current[currencySymbol] = {
+            price,
+            lastUpdated: Date.now(),
+          };
+          // If this update is for the currently selected currency, batch chart updates
+          if (currencySymbol === selectedCurrencyRef.current) {
+            priceBufferRef.current = price;
+            messageCountRef.current += 1;
+            if (messageCountRef.current >= BATCH_THRESHOLD) {
+              processBatch();
+            } else if (!batchTimerRef.current) {
+              batchTimerRef.current = window.setTimeout(
+                processBatch,
+                BATCH_WINDOW
+              );
             }
-            const currencySymbol = instrument.replace("USDT", "");
-            setTopCurrencies((prev) =>
-              prev.map((curr) =>
-                curr.symbol === currencySymbol
-                  ? { ...curr, price: price, lastUpdated: Date.now() }
-                  : curr
-              )
-            );
           }
-        } catch (err) {
-          console.error("Error parsing WS message:", err);
         }
-      };
-      ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
-        setWsConnected(false);
-      };
-      ws.onclose = (e) => {
-        setWsConnected(false);
-        if (e.code !== 1000 && e.code !== 1001) {
-          console.log(
-            "WebSocket disconnected, attempting to reconnect in 5 seconds..."
-          );
-          setTimeout(() => {
-            connectWebSocketForCurrency(symbol);
-          }, 5000);
-        }
-      };
-    },
-    [processBatch]
-  );
+      } catch (err) {
+        console.error("Error parsing WS message:", err);
+      }
+    };
+    ws.onerror = (err) => {
+      console.error("WebSocket error:", err);
+      setWsConnected(false);
+    };
+    ws.onclose = (e) => {
+      setWsConnected(false);
+      if (e.code !== 1000 && e.code !== 1001) {
+        console.log(
+          "WebSocket disconnected, attempting to reconnect in 5 seconds..."
+        );
+        setTimeout(connectWebSocketAll, 5000);
+      }
+    };
+  }, [processBatch]);
 
+  // Update the table of top currencies every second using the latestPricesRef
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setTopCurrencies((prev) =>
+        prev.map((currency) => {
+          const latest = latestPricesRef.current[currency.symbol];
+          return latest
+            ? {
+                ...currency,
+                price: latest.price,
+                lastUpdated: latest.lastUpdated,
+              }
+            : currency;
+        })
+      );
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Initialization for selected currency – note we no longer reconnect WS here
   const initializeDashboardForCurrency = useCallback(
     async (symbol: string) => {
       try {
@@ -807,18 +779,13 @@ export default function Dashboard() {
         setCryptoData(ticker);
         setLastUpdated(new Date().toLocaleTimeString());
         setLoading(false);
-        connectWebSocketForCurrency(symbol);
       } catch (err: any) {
         console.error(`Error initializing for ${symbol}:`, err);
         setError(err?.message || `Failed to load data for ${symbol}`);
         setLoading(false);
       }
     },
-    [
-      fetchHistoricalDataForCurrency,
-      fetchTickerDataForCurrency,
-      connectWebSocketForCurrency,
-    ]
+    [fetchHistoricalDataForCurrency, fetchTickerDataForCurrency]
   );
 
   // 2. Fetch news from CryptoCompare
@@ -859,6 +826,8 @@ export default function Dashboard() {
       initializeDashboardForCurrency("BTC");
     });
     fetchLatestNews();
+    // Establish the global WebSocket connection once.
+    connectWebSocketAll();
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
@@ -868,7 +837,12 @@ export default function Dashboard() {
         clearTimeout(batchTimerRef.current);
       }
     };
-  }, [fetchTopCurrencies, initializeDashboardForCurrency, fetchLatestNews]);
+  }, [
+    fetchTopCurrencies,
+    initializeDashboardForCurrency,
+    fetchLatestNews,
+    connectWebSocketAll,
+  ]);
 
   // Fetch user data including creation date
   const fetchUserData = useCallback(async () => {
@@ -901,10 +875,7 @@ export default function Dashboard() {
 
   const handleCurrencySelect = useCallback(
     (symbol: string) => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+      // Do not close or reconnect the WS – it stays global.
       setZoomState({ xDomain: undefined, yDomain: undefined, isZoomed: false });
       setChartData([]);
       setMinuteData([]);
@@ -1136,6 +1107,7 @@ export default function Dashboard() {
   const handleMouseUp = useCallback(() => {
     setPanState((prev) => ({ ...prev, isPanning: false }));
   }, []);
+
   const handleMouseLeave = useCallback(() => {
     setPanState((prev) => ({ ...prev, isPanning: false }));
   }, []);
