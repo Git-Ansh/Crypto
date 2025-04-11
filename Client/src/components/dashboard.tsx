@@ -2058,8 +2058,8 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent className="p-3 sm:p-4">
                   <p className="text-xs sm:text-sm mb-2">
-                    For simplicity, a novice can instantly buy/sell the
-                    currently selected currency.
+                    For simplicity, a novice can instantly buy/sell currently
+                    selected currency.
                   </p>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Button className="w-full sm:w-auto" variant="default">
