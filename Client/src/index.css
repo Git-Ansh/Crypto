@@ -5,9 +5,9 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-      font-family: 'futura', system-ui, Avenir, Helvetica, Arial, sans-serif;
-      line-height: 1.5;
-      font-weight: 400;
+  font-family: "futura", system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
 
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
@@ -54,7 +54,7 @@
 
 /* Add responsive container styles */
 .crypto-dashboard-title {
-  font-family: 'Alien Moon', sans-serif;
+  font-family: "Alien Moon", sans-serif;
   font-weight: bold;
   letter-spacing: 0.5px;
   font-size: clamp(1.2rem, 4vw, 2rem); /* Responsive font size */
@@ -81,7 +81,6 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow-x: hidden;
-
 }
 
 h1 {
@@ -90,24 +89,24 @@ h1 {
 }
 
 @font-face {
-  font-family: 'Alien Moon';
-  src: url('/fonts/alien-moon/AlienMoon-3zrYX.ttf') format('truetype');
+  font-family: "Alien Moon";
+  src: url("/fonts/alien-moon/AlienMoon-3zrYX.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Alien Moon';
-  src: url('/fonts/alien-moon/AlienMoonItalic-OVPlO.ttf') format('truetype');
+  font-family: "Alien Moon";
+  src: url("/fonts/alien-moon/AlienMoonItalic-OVPlO.ttf") format("truetype");
   font-weight: normal;
   font-style: italic;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Alien Moon';
-  src: url('/fonts/alien-moon/AlienMoonItalic-OVPlO.ttf') format('truetype');
+  font-family: "Alien Moon";
+  src: url("/fonts/alien-moon/AlienMoonItalic-OVPlO.ttf") format("truetype");
   font-weight: normal;
   font-style: italic;
   font-display: swap;
@@ -115,16 +114,17 @@ h1 {
 
 /* Add Nuixyber font declarations */
 @font-face {
-  font-family: 'Nuixyber';
-  src: url('/fonts/nuixyber/NuixyberInnoConvert-9M9vj.ttf') format('truetype');
+  font-family: "Nuixyber";
+  src: url("/fonts/nuixyber/NuixyberInnoConvert-9M9vj.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Nuixyber';
-  src: url('/fonts/nuixyber/NuixyberInnoConvertItalic-lx5pD.ttf') format('truetype');
+  font-family: "Nuixyber";
+  src: url("/fonts/nuixyber/NuixyberInnoConvertItalic-lx5pD.ttf")
+    format("truetype");
   font-weight: normal;
   font-style: italic;
   font-display: swap;
@@ -169,7 +169,9 @@ h1 {
   }
 
   /* Make all containers respect viewport width */
-  div, section, main {
+  div,
+  section,
+  main {
     max-width: 100%;
     width: 100%;
     padding-left: 0.5rem;
@@ -190,7 +192,7 @@ h1 {
   }
 
   /* Ensure buttons and interactive elements are properly sized */
-  button, 
+  button,
   select,
   [role="button"],
   input {
@@ -220,7 +222,9 @@ h1 {
   }
 
   /* Further reduce spacing */
-  div, section, main {
+  div,
+  section,
+  main {
     padding-left: 0.25rem;
     padding-right: 0.25rem;
   }
@@ -292,7 +296,9 @@ button:focus-visible {
   --accent: oklch(0.279 0.041 260.031);
   --accent-foreground: oklch(0.984 0.003 247.858);
   --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.837 0.237 25.331); /* Made brighter for dark mode */
+  --destructive-foreground: oklch(
+    0.837 0.237 25.331
+  ); /* Made brighter for dark mode */
   --border: oklch(0.279 0.041 260.031);
   --input: oklch(0.279 0.041 260.031);
   --ring: oklch(0.446 0.043 257.281);
