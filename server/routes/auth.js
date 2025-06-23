@@ -61,10 +61,19 @@ router.post(
       });
 
       await newUser.save();
-      res.status(201).json({ message: "User registered successfully" });
+      res.status(201).json({
+        success: true,
+        message: "User registered successfully",
+        data: {
+          id: newUser._id,
+          username: newUser.username,
+          email: newUser.email
+        }
+      });
     } catch (error) {
+      console.error("Registration error:", error);
       if (!(error instanceof CustomError)) {
-        return next(new CustomError("Server error", 500));
+        return next(new CustomError("Server error: " + error.message, 500));
       }
       next(error);
     }
@@ -705,8 +714,8 @@ router.get("/debug-token", async (req, res) => {
         tokenFormat: authHeader.startsWith("Bearer ")
           ? "Bearer"
           : authHeader.startsWith("Firebase ")
-          ? "Firebase"
-          : "Raw",
+            ? "Firebase"
+            : "Raw",
         decodedJwt: decoded,
         verifiedToken: decodedToken,
       });
@@ -717,8 +726,8 @@ router.get("/debug-token", async (req, res) => {
         tokenFormat: authHeader.startsWith("Bearer ")
           ? "Bearer"
           : authHeader.startsWith("Firebase ")
-          ? "Firebase"
-          : "Raw",
+            ? "Firebase"
+            : "Raw",
         decodedJwt: decoded,
         error: firebaseError.message,
         errorCode: firebaseError.code,

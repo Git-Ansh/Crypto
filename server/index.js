@@ -77,15 +77,15 @@ const app = express();
 const allowedOrigins =
   NODE_ENV === "production"
     ? [
-        "https://www.crypto-pilot.dev",
-        "https://crypto-pilot.dev",
-        "https://app.crypto-pilot.dev",
-      ]
+      "https://www.crypto-pilot.dev",
+      "https://crypto-pilot.dev",
+      "https://app.crypto-pilot.dev",
+    ]
     : [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:5174",
-      ];
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:5174",
+    ];
 
 // IMPORTANT: Apply CORS middleware BEFORE any routes
 app.use(
@@ -166,8 +166,6 @@ async function connectToDatabase() {
 
   try {
     const client = await mongoose.connect(MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       maxPoolSize: 10, // Keeping a smaller connection pool for serverless
     });
