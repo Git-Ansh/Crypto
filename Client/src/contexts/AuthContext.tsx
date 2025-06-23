@@ -41,50 +41,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setUser = (newUser: User | null) => {
-    console.log("AuthContext.setUser called with:", newUser);
-    console.log("Current user state before update:", user);
+    console.log("Setting user:", newUser ? newUser.email : "null");
     setUserState(newUser);
-    console.log("User state updated, new state should be:", newUser);
 
     if (newUser) {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
-      console.log("User data stored in localStorage");
     } else {
       localStorage.removeItem(AUTH_STORAGE_KEY);
-      console.log("User data removed from localStorage");
     }
   };
 
   const checkAuthStatus = async () => {
     try {
       setLoading(true);
+      console.log("Checking authentication status...");
 
-      const storedUser = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser);
-          setUserState(parsedUser);
-          setLoading(false);
-          return;
-        } catch (err) {
-          console.error("Invalid stored user data:", err);
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-        }
+      // Check if we have a token
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        console.log("No auth token found");
+        setUser(null);
+        return;
       }
 
+      console.log("Found auth token, verifying with server...");
+
+      // Verify token with server
       const apiUrl = config.api.baseUrl;
-      const response = await fetch(`${apiUrl}/api/auth/verify`, {
+      const response = await fetch(`${apiUrl}/api/auth/verify-token`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
         credentials: "include",
       });
 
       if (response.ok) {
         const data = await response.json();
-        setUser(data.user);
+        console.log("Token verification successful:", data);
+
+        if (data.valid && data.user) {
+          console.log("Setting user from token verification:", data.user);
+          setUserState(data.user);
+
+          // Store user data in localStorage
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user));
+        } else {
+          console.log("Token verification failed or no user data");
+          setUser(null);
+        }
       } else {
+        console.log("Token verification failed with status:", response.status);
+        // Token is invalid, clear it
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem(AUTH_STORAGE_KEY);
         setUser(null);
       }
     } catch (err) {
       console.error("Auth check failed:", err);
+      // Clear invalid tokens
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem(AUTH_STORAGE_KEY);
       setUser(null);
     } finally {
       setLoading(false);
@@ -93,8 +111,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      // Clear user data from localStorage
+      console.log("Logging out user...");
+
+      // Clear user state immediately
+      setUserState(null);
+
+      // Clear ALL auth-related tokens from localStorage
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem("auth_token");
 
       // Clear avatar from localStorage and sessionStorage
       localStorage.removeItem("userAvatar");
@@ -102,16 +126,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("avatarUrl");
       sessionStorage.removeItem("avatarUrl");
 
-      // Clear any cookies that might store avatar data
+      // Clear any other auth-related items
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (
+          key &&
+          (key.includes("firebase") ||
+            key.includes("google") ||
+            key.includes("token"))
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => {
+        console.log(`Removing auth key: ${key}`);
+        localStorage.removeItem(key);
+      });
+
+      // Clear any cookies that might store auth data
       document.cookie =
         "userAvatar=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
       document.cookie =
         "avatarUrl=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie =
+        "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie =
+        "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 
-      // Clear user state
-      setUserState(null);
+      console.log("All auth tokens and data cleared from localStorage");
 
-      // Call server logout endpoint
+      // Call server logout endpoint to clear HTTP-only cookies
       const apiUrl = config.api.baseUrl;
       const response = await fetch(`${apiUrl}/api/auth/logout`, {
         method: "POST",
@@ -120,6 +165,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!response.ok) {
         console.warn("Server logout failed, but local session was cleared");
+      } else {
+        console.log("Server logout successful");
       }
     } catch (err) {
       console.error("Logout failed:", err);
@@ -129,6 +176,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     console.log("Auth state updated:", { user, loading });
   }, [user, loading]);
+
+  // Check auth status on app load
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
 
   return (
     <AuthContext.Provider

@@ -610,7 +610,10 @@ router.get("/verify-token", cors(corsOptions), async (req, res) => {
 
     if (!authHeader) {
       console.log("No Authorization header found");
-      return res.status(401).json({ message: "No token provided" });
+      return res.status(401).json({
+        valid: false,
+        message: "No token provided"
+      });
     }
 
     console.log("Auth header format:", authHeader.substring(0, 20) + "...");
@@ -622,51 +625,72 @@ router.get("/verify-token", cors(corsOptions), async (req, res) => {
       token = authHeader;
     }
 
+    // First try JWT verification (for email/password login)
     try {
-      // Try Firebase verification
-      const decodedFirebase = await admin.auth().verifyIdToken(token);
-      console.log(
-        "Firebase verification successful for user:",
-        decodedFirebase.uid
-      );
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("JWT verification successful for user:", decoded.user?.id);
 
-      // Find user by Firebase UID
-      const User = require("../models/user");
-      const user = await User.findOne({ firebaseUid: decodedFirebase.uid });
+      // Get user data from database
+      const user = await User.findById(decoded.user.id).select("-password");
 
       return res.json({
         valid: true,
-        message: "Token is valid",
-        uid: decodedFirebase.uid,
-        user: user ? { id: user._id } : null,
+        message: "JWT token is valid",
+        tokenType: "JWT",
+        user: {
+          id: user._id,
+          name: user.username,
+          email: user.email,
+          avatar: user.avatar
+        }
       });
-    } catch (firebaseError) {
-      // If Firebase verification fails, try JWT
-      console.log("Firebase verification failed:", firebaseError.message);
+    } catch (jwtError) {
+      console.log("JWT verification failed, trying Firebase:", jwtError.message);
 
+      // If JWT fails, try Firebase verification (for Google login)
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log("JWT verification successful for user:", decoded.user?.id);
+        const decodedFirebase = await admin.auth().verifyIdToken(token);
+        console.log("Firebase verification successful for user:", decodedFirebase.uid);
+
+        // Find user by Firebase UID or email
+        let user = await User.findOne({ firebaseUid: decodedFirebase.uid });
+        if (!user) {
+          user = await User.findOne({ email: decodedFirebase.email });
+        }
+
         return res.json({
           valid: true,
-          message: "JWT token is valid",
-          user: decoded.user,
+          message: "Firebase token is valid",
+          tokenType: "Firebase",
+          uid: decodedFirebase.uid,
+          user: user ? {
+            id: user._id,
+            name: user.username,
+            email: user.email,
+            avatar: user.avatar
+          } : {
+            id: decodedFirebase.uid,
+            name: decodedFirebase.name || decodedFirebase.email?.split("@")[0],
+            email: decodedFirebase.email,
+            avatar: decodedFirebase.picture
+          }
         });
-      } catch (jwtError) {
-        console.error("JWT verification failed:", jwtError.message);
+      } catch (firebaseError) {
+        console.error("Both JWT and Firebase verification failed");
         return res.status(401).json({
           valid: false,
           message: "Invalid token",
-          firebaseError: firebaseError.message,
           jwtError: jwtError.message,
+          firebaseError: firebaseError.message,
         });
       }
     }
   } catch (error) {
     console.error("Token verification error:", error);
-    return res
-      .status(500)
-      .json({ message: "Server error during token verification" });
+    return res.status(500).json({
+      valid: false,
+      message: "Server error during token verification"
+    });
   }
 });
 

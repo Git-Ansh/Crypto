@@ -125,29 +125,20 @@ export function LoginForm({
         console.log("Login result:", result);
 
         if (result.success) {
-          console.log("Login successful, processing user data...");
-          console.log("Full result:", result);
-          console.log("result.data:", result.data);
-          console.log("result.data.data:", result.data?.data);
-          console.log("result.data.data.user:", result.data?.data?.user);
+          console.log("Email/password login successful");
 
           // Set user in context - handle double-nested response
           let userData = null;
           if (result.data?.data?.user) {
             userData = result.data.data.user;
-            console.log("Using result.data.data.user:", userData);
           } else if (result.data?.user) {
             userData = result.data.user;
-            console.log("Using result.data.user:", userData);
           } else if (result.data?.data) {
             userData = result.data.data;
-            console.log("Using result.data.data:", userData);
-          } else {
-            console.error("No user data found in response!");
           }
 
           if (userData) {
-            console.log("Setting user in context:", userData);
+            console.log("Setting user in context");
             setUser(userData);
           }
 

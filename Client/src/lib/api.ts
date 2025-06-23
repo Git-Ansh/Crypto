@@ -253,6 +253,11 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}) {
  */
 export async function loginUser(email: string, password: string) {
   try {
+    console.log("Starting email/password login...");
+
+    // Clear any existing tokens before login
+    localStorage.removeItem("auth_token");
+
     const response = await apiRequest("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
@@ -264,9 +269,9 @@ export async function loginUser(email: string, password: string) {
       return { success: false, error: response.error };
     }
 
-    // Store the token if it's in the response
+    // For email/password login, we expect a JWT token
     if (response.token) {
-      console.log("Login successful, storing auth token");
+      console.log("Email/password login successful, storing JWT token");
       localStorage.setItem("auth_token", response.token);
       debugAuthToken();
       return { success: true, data: response };
@@ -289,9 +294,12 @@ export async function loginUser(email: string, password: string) {
  */
 export async function verifyGoogleAuth(idToken: string) {
   try {
-    console.log("Verifying Google auth with token:", idToken.substring(0, 10) + "...");
+    console.log("Verifying Google auth with Firebase token:", idToken.substring(0, 10) + "...");
 
-    // First verify with Google
+    // Clear any existing tokens before Google login
+    localStorage.removeItem("auth_token");
+
+    // For Google sign-in, we'll use the Firebase token directly
     const response = await fetch(`${config.api.baseUrl}/api/auth/google-verify`, {
       method: 'POST',
       headers: {
@@ -311,17 +319,13 @@ export async function verifyGoogleAuth(idToken: string) {
       };
     }
 
-    // If verification successful, exchange the token
+    // If verification successful, store the Firebase token
     if (data.success) {
-      const exchangeResult = await exchangeToken(idToken);
+      console.log("Google authentication successful, storing Firebase token");
+      localStorage.setItem("auth_token", idToken);
 
-      if (exchangeResult.success) {
-        if (exchangeResult.token) {
-          localStorage.setItem("auth_token", exchangeResult.token);
-        } else {
-          localStorage.setItem("auth_token", idToken);
-        }
-      }
+      // Debug the Firebase token
+      console.log("Stored Firebase token for Google auth");
 
       return { success: true, data: data.data };
     } else {
