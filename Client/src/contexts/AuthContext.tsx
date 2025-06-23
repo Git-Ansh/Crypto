@@ -41,13 +41,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setUser = (newUser: User | null) => {
-    console.log("Setting auth user:", newUser);
+    console.log("AuthContext.setUser called with:", newUser);
+    console.log("Current user state before update:", user);
     setUserState(newUser);
+    console.log("User state updated, new state should be:", newUser);
 
     if (newUser) {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
+      console.log("User data stored in localStorage");
     } else {
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      console.log("User data removed from localStorage");
     }
   };
 

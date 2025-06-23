@@ -125,11 +125,27 @@ export function LoginForm({
         console.log("Login result:", result);
 
         if (result.success) {
+          console.log("Login successful, processing user data...");
+          console.log("Full result:", result);
+          console.log("result.data:", result.data);
+          console.log("result.data.user:", result.data?.user);
+          console.log("result.data.data:", result.data?.data);
+
           // Set user in context
-          if (result.data.user) {
-            setUser(result.data.user);
-          } else if (result.data.data) {
-            setUser(result.data.data);
+          let userData = null;
+          if (result.data?.user) {
+            userData = result.data.user;
+            console.log("Using result.data.user:", userData);
+          } else if (result.data?.data) {
+            userData = result.data.data;
+            console.log("Using result.data.data:", userData);
+          } else {
+            console.error("No user data found in response!");
+          }
+
+          if (userData) {
+            console.log("Setting user in context:", userData);
+            setUser(userData);
           }
 
           // Navigate to dashboard

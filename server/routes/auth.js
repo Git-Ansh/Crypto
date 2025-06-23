@@ -173,6 +173,14 @@ router.post(
         message: "Logged in successfully",
         token: accessToken,
         expiresIn: 15 * 60,
+        data: {
+          user: {
+            id: user._id,
+            name: user.username,
+            email: user.email,
+            avatar: user.avatar
+          }
+        }
       });
     } catch (error) {
       console.log(error);
