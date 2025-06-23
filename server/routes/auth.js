@@ -631,18 +631,36 @@ router.get("/verify-token", cors(corsOptions), async (req, res) => {
       console.log("JWT verification successful for user:", decoded.user?.id);
 
       // Get user data from database
+      console.log("Looking up user with ID:", decoded.user.id);
       const user = await User.findById(decoded.user.id).select("-password");
+      console.log("Found user:", user ? `${user.username} (${user.email})` : "null");
+
+      if (!user) {
+        console.log("User not found in database");
+        return res.status(404).json({
+          valid: false,
+          message: "User not found"
+        });
+      }
+
+      const userResponse = {
+        id: user._id,
+        name: user.username,
+        email: user.email,
+        avatar: user.avatar,
+        paperBalance: user.paperBalance,
+        role: user.role,
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin
+      };
+
+      console.log("Returning user data:", userResponse);
 
       return res.json({
         valid: true,
         message: "JWT token is valid",
         tokenType: "JWT",
-        user: {
-          id: user._id,
-          name: user.username,
-          email: user.email,
-          avatar: user.avatar
-        }
+        user: userResponse
       });
     } catch (jwtError) {
       console.log("JWT verification failed, trying Firebase:", jwtError.message);
@@ -667,12 +685,20 @@ router.get("/verify-token", cors(corsOptions), async (req, res) => {
             id: user._id,
             name: user.username,
             email: user.email,
-            avatar: user.avatar
+            avatar: user.avatar,
+            paperBalance: user.paperBalance,
+            role: user.role,
+            createdAt: user.createdAt,
+            lastLogin: user.lastLogin
           } : {
             id: decodedFirebase.uid,
             name: decodedFirebase.name || decodedFirebase.email?.split("@")[0],
             email: decodedFirebase.email,
-            avatar: decodedFirebase.picture
+            avatar: decodedFirebase.picture,
+            paperBalance: 10000, // Default for new Google users
+            role: "user",
+            createdAt: new Date(),
+            lastLogin: null
           }
         });
       } catch (firebaseError) {

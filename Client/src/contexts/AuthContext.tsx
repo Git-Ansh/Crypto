@@ -6,6 +6,10 @@ interface User {
   name: string;
   email: string;
   avatar?: string;
+  paperBalance?: number;
+  role?: string;
+  createdAt?: string;
+  lastLogin?: string;
 }
 
 interface AuthContextType {
@@ -44,11 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log("Setting user:", newUser ? newUser.email : "null");
     setUserState(newUser);
 
-    if (newUser) {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
-    } else {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
-    }
+    // We don't store user data in localStorage anymore
+    // User data is fetched fresh from the server using the token
   };
 
   const checkAuthStatus = async () => {
@@ -85,8 +86,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log("Setting user from token verification:", data.user);
           setUserState(data.user);
 
-          // Store user data in localStorage
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user));
+          // Don't store user data in localStorage - we'll fetch it fresh each time
+          // This ensures user data is always up-to-date from the server
         } else {
           console.log("Token verification failed or no user data");
           setUser(null);
@@ -95,14 +96,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log("Token verification failed with status:", response.status);
         // Token is invalid, clear it
         localStorage.removeItem("auth_token");
-        localStorage.removeItem(AUTH_STORAGE_KEY);
         setUser(null);
       }
     } catch (err) {
       console.error("Auth check failed:", err);
       // Clear invalid tokens
       localStorage.removeItem("auth_token");
-      localStorage.removeItem(AUTH_STORAGE_KEY);
       setUser(null);
     } finally {
       setLoading(false);
@@ -117,7 +116,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUserState(null);
 
       // Clear ALL auth-related tokens from localStorage
-      localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem("auth_token");
 
       // Clear avatar from localStorage and sessionStorage
