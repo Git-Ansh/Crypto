@@ -128,12 +128,15 @@ export function LoginForm({
           console.log("Login successful, processing user data...");
           console.log("Full result:", result);
           console.log("result.data:", result.data);
-          console.log("result.data.user:", result.data?.user);
           console.log("result.data.data:", result.data?.data);
+          console.log("result.data.data.user:", result.data?.data?.user);
 
-          // Set user in context
+          // Set user in context - handle double-nested response
           let userData = null;
-          if (result.data?.user) {
+          if (result.data?.data?.user) {
+            userData = result.data.data.user;
+            console.log("Using result.data.data.user:", userData);
+          } else if (result.data?.user) {
             userData = result.data.user;
             console.log("Using result.data.user:", userData);
           } else if (result.data?.data) {
