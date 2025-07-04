@@ -12,6 +12,7 @@ import {
   PieChart,
   Settings2,
   SquareTerminal,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -191,11 +192,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         }
       : null);
 
-  const { isMobile, state } = useSidebar();
+  const { isMobile, state, setOpenMobile } = useSidebar();
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
+        {isMobile && (
+          <div className="sidebar-mobile-header">
+            <h1 className="crypto-dashboard-title">Crypto Pilot</h1>
+          </div>
+        )}
         <NavUser user={userData} />
       </SidebarHeader>
       <SidebarContent>
@@ -204,58 +210,77 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
       <SidebarFooter>
         <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    // Clear avatar from localStorage and sessionStorage
-                    localStorage.removeItem("userAvatar");
-                    sessionStorage.removeItem("userAvatar");
-                    localStorage.removeItem("avatarUrl");
-                    sessionStorage.removeItem("avatarUrl");
+          <div className={`flex gap-2 ${isMobile ? "flex-row" : "flex-col"}`}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      // Clear avatar from localStorage and sessionStorage
+                      localStorage.removeItem("userAvatar");
+                      sessionStorage.removeItem("userAvatar");
+                      localStorage.removeItem("avatarUrl");
+                      sessionStorage.removeItem("avatarUrl");
 
-                    // Clear any cookies that might store avatar data
-                    document.cookie =
-                      "userAvatar=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-                    document.cookie =
-                      "avatarUrl=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+                      // Clear any cookies that might store avatar data
+                      document.cookie =
+                        "userAvatar=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+                      document.cookie =
+                        "avatarUrl=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 
-                    // Force browser to clear image cache for this user
-                    if (userData && userData.avatar) {
-                      const img = new Image();
-                      img.src =
-                        userData.avatar + "?clear=" + new Date().getTime();
+                      // Force browser to clear image cache for this user
+                      if (userData && userData.avatar) {
+                        const img = new Image();
+                        img.src =
+                          userData.avatar + "?clear=" + new Date().getTime();
+                      }
+
+                      await fetch(`${config.api.baseUrl}/api/auth/logout`, {
+                        method: "POST",
+                        credentials: "include",
+                      });
+                      await logout();
+                      navigate("/login");
+                    } catch (error) {
+                      console.error("Logout failed:", error);
                     }
-
-                    await fetch(`${config.api.baseUrl}/api/auth/logout`, {
-                      method: "POST",
-                      credentials: "include",
-                    });
-                    await logout();
-                    navigate("/login");
-                  } catch (error) {
-                    console.error("Logout failed:", error);
-                  }
-                }}
-                className="group-data-[state=collapsed]:w-8 group-data-[state=collapsed]:h-8 group-data-[state=collapsed]:p-0 group-data-[state=collapsed]:flex group-data-[state=collapsed]:justify-center group-data-[state=collapsed]:items-center group-data-[state=collapsed]:mx-auto group-data-[state=collapsed]:ml-[calc(50%-20px)] transition-all"
+                  }}
+                  className="group-data-[state=collapsed]:w-8 group-data-[state=collapsed]:h-8 group-data-[state=collapsed]:p-0 group-data-[state=collapsed]:flex group-data-[state=collapsed]:justify-center group-data-[state=collapsed]:items-center group-data-[state=collapsed]:mx-auto group-data-[state=collapsed]:ml-[calc(50%-20px)] transition-all"
+                >
+                  <LogOut className="h-4 w-4 mr-2 group-data-[state=collapsed]:mr-0" />
+                  <span className="group-data-[state=collapsed]:hidden">
+                    Logout
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                align="center"
+                hidden={state !== "collapsed" || isMobile}
               >
-                <LogOut className="h-4 w-4 mr-2 group-data-[state=collapsed]:mr-0" />
-                <span className="group-data-[state=collapsed]:hidden">
-                  Logout
-                </span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="right"
-              align="center"
-              hidden={state !== "collapsed" || isMobile}
-            >
-              Logout
-            </TooltipContent>
-          </Tooltip>
+                Logout
+              </TooltipContent>
+            </Tooltip>
+
+            {isMobile && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setOpenMobile(false)}
+                    className="flex-shrink-0"
+                    aria-label="Close sidebar"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Close</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </TooltipProvider>
       </SidebarFooter>
     </Sidebar>
