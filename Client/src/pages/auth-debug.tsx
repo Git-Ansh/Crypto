@@ -3,6 +3,7 @@ import { runAuthDiagnostics } from "../lib/auth-debug";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { LoadingSpinner } from "@/components/ui/loading";
 
 export default function AuthDebugPage() {
   const [results, setResults] = useState<any>(null);
@@ -44,7 +45,14 @@ export default function AuthDebugPage() {
             </div>
 
             <Button onClick={handleRunDiagnostics} disabled={loading}>
-              {loading ? "Running Diagnostics..." : "Run Auth Diagnostics"}
+              {loading ? (
+                <div className="flex items-center">
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Running Diagnostics...
+                </div>
+              ) : (
+                "Run Auth Diagnostics"
+              )}
             </Button>
 
             {error && (

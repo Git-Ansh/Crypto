@@ -21,6 +21,7 @@ import { signInWithGoogle } from "@/lib/auth";
 import { loginUser, verifyGoogleAuth } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth, syncAuthState } from "@/contexts/AuthContext";
+import { Loading, LoadingSpinner } from "@/components/ui/loading";
 
 // Safe navigation hook that falls back to window.location if Router context is missing
 const useNavigate = () => {
@@ -64,11 +65,7 @@ export function LoginForm({
 
   // Show loading state while checking auth
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <Loading message="Checking authentication..." />;
   }
 
   // If not loading and user is not authenticated, show login form
@@ -265,7 +262,7 @@ export function LoginForm({
                         type="button"
                       >
                         {loading.google ? (
-                          <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          <LoadingSpinner size="sm" className="mr-2" />
                         ) : (
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -350,7 +347,7 @@ export function LoginForm({
                         disabled={loading.email || loading.google}
                       >
                         {loading.email ? (
-                          <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          <LoadingSpinner size="sm" className="mr-2" />
                         ) : null}
                         Login
                       </Button>

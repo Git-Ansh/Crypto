@@ -443,121 +443,62 @@ button:focus-visible {
   }
 }
 
-/* Mobile-specific adjustments */
-@media (max-width: 768px) {
-  /* Reset and fix Select trigger */
-  .SelectTrigger,
-  [data-slot="select-trigger"] {
-    width: 100% !important;
-    min-width: unset !important;
-    max-width: 100% !important;
-  }
+/* CryptoPilot Loading Animation */
+.cryptopilot-spinner {
+  width: 100%;
+  height: 100%;
+  border: 3px solid rgba(var(--primary), 0.1);
+  border-top: 3px solid hsl(var(--primary));
+  border-radius: 50%;
+  animation: cryptopilot-spin 1s linear infinite;
+  position: relative;
+}
 
-  /* Fix portal and content positioning */
-  .SelectPortal,
-  [data-radix-select-portal] {
-    position: fixed !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    width: calc(100% - 32px) !important;
-    max-width: 300px !important;
-  }
+.cryptopilot-spinner::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  background: hsl(var(--primary));
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: cryptopilot-pulse 1.5s ease-in-out infinite;
+}
 
-  /* Fix content container */
-  [data-slot="select-content"] {
-    position: relative !important;
-    width: 100% !important;
-    min-width: unset !important;
-    max-width: none !important;
-    margin: 4px 0 !important;
-    transform: none !important;
-    left: 0 !important;
-    height: auto !important;
-    min-height: 200px !important;
+@keyframes cryptopilot-spin {
+  0% {
+    transform: rotate(0deg);
   }
-
-  /* Fix viewport */
-  [data-slot="select-content"] .SelectViewport {
-    width: 100% !important;
-    padding: 8px !important;
-    height: auto !important;
-    min-height: 200px !important;
-    max-height: 50vh !important;
-  }
-
-  /* Fix items alignment and visibility */
-  [data-slot="select-item"] {
-    width: 100% !important;
-    padding: 12px !important;
-    font-size: 16px !important;
-    height: auto !important;
-    min-height: 44px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    position: relative !important;
-    left: 0 !important;
-    transform: none !important;
-  }
-
-  /* Fix item text alignment */
-  [data-slot="select-item"] [data-slot="select-item-text"] {
-    position: relative !important;
-    left: 0 !important;
-    transform: none !important;
-    text-align: left !important;
-    width: 100% !important;
-  }
-
-  /* Fix item indicator (checkmark) position */
-  [data-slot="select-item"] [data-slot="select-item-indicator"] {
-    position: absolute !important;
-    right: 8px !important;
-    top: 50% !important;
-    transform: translateY(-50%) !important;
-  }
-
-  /* Ensure proper z-index and visibility */
-  [data-radix-select-portal] {
-    z-index: 9999 !important;
-    height: auto !important;
-    min-height: 200px !important;
+  100% {
+    transform: rotate(360deg);
   }
 }
 
-/* Remove any interfering styles */
-[data-slot="select-item"],
-[data-slot="select-item"] * {
-  position: relative !important;
-  left: auto !important;
-  right: auto !important;
-}
-
-/* Ensure text is visible and aligned properly */
-[data-slot="select-item-text"] {
-  display: block !important;
-  width: calc(100% - 24px) !important; /* Account for checkmark */
-  text-align: left !important;
-  white-space: normal !important;
-  overflow: visible !important;
-}
-
-/* Fix animation while maintaining height */
-[data-slot="select-content"][data-side="bottom"] {
-  animation: selectDropDown 0.2s ease-out !important;
-  height: auto !important;
-  min-height: 200px !important;
-}
-
-@keyframes selectDropDown {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
+@keyframes cryptopilot-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translate(-50%, -50%) scale(0.8);
   }
-  to {
+  50% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(-50%, -50%) scale(1.2);
   }
+}
+
+/* Font loading for Alien Moon */
+@font-face {
+  font-family: "Alien Moon";
+  src: url("/fonts/alien-moon/AlienMoon-3zrYX.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-alien-moon {
+  font-family: "Alien Moon", cursive, sans-serif;
 }
 
 /* Mobile-specific adjustments */
@@ -1356,7 +1297,9 @@ button:focus-visible {
   /* Logout button - constrained width to leave space for close button */
   [data-mobile="true"] [data-sidebar="footer"] button:first-child {
     flex: 1 !important;
-    max-width: calc(100% - 3rem) !important; /* Leave space for close button + gap */
+    max-width: calc(
+      100% - 3rem
+    ) !important; /* Leave space for close button + gap */
     overflow: hidden !important;
     white-space: nowrap !important;
   }
@@ -1398,5 +1341,116 @@ button:focus-visible {
     margin-bottom: 0.5rem !important;
     overflow: hidden !important;
     width: 100% !important;
+  }
+}
+
+/* Mobile Dashboard Header Controls */
+@media (max-width: 640px) {
+  /* Mobile header controls container */
+  .mobile-header-controls {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.25rem !important;
+    margin-left: 3rem !important; /* Space for sidebar toggle */
+    margin-top: 0.53rem !important; /* Lower the controls more to align with sidebar toggle */
+    min-width: 0 !important;
+    flex-wrap: nowrap !important;
+    overflow: hidden !important;
+    flex-shrink: 1 !important;
+    max-width: calc(100vw - 4rem) !important;
+  }
+
+  /* Mobile header control buttons - same size as sidebar toggle */
+  .mobile-header-controls .btn-control {
+    height: 2rem !important; /* 40px - same as sidebar toggle */
+    min-height: 2.1rem !important;
+    max-height: 2.1rem !important;
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.7rem !important;
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    color: white !important; /* White text like other elements */
+    border-color: rgb(255, 255, 255) !important; /* Subtle white border */
+  }
+
+  .mobile-header-controls .btn-icon {
+    height: 2.1rem !important; /* Match the last updated button height */
+    width: 2.1rem !important; /* Square dimensions */
+    min-width: 2.1rem !important;
+    max-width: 2.1rem !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* Connection indicator sizing */
+  .mobile-header-controls .connection-indicator {
+    width: 0.75rem !important;
+    height: 0.75rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Last updated button on mobile - with stacked text */
+  .mobile-header-controls .last-updated-btn {
+    max-width: 6rem !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: 0.6rem !important;
+    line-height: 0.8 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: rgb(255, 255, 255) !important; /* White text */
+  }
+
+  /* Last updated text styling */
+  .mobile-header-controls .last-updated-label {
+    font-size: 0.5rem !important;
+    opacity: 0.8 !important;
+    margin-bottom: 0.1rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.025em !important;
+  }
+
+  .mobile-header-controls .last-updated-time {
+    font-size: 0.6rem !important;
+    font-weight: 500 !important;
+  }
+
+  /* Specific override for last updated button - mobile only */
+  .mobile-header-controls .last-updated-btn.btn-control {
+    background-color: rgb(255, 255, 255) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    color: white !important;
+  }
+
+  .mobile-header-controls .last-updated-btn.btn-control .last-updated-label {
+    color: rgb(255, 255, 255) !important;
+    opacity: 0.9 !important;
+  }
+
+  .mobile-header-controls .last-updated-btn.btn-control .last-updated-time {
+    color: rgb(255, 255, 255) !important;
+    opacity: 1 !important;
+  }
+
+  /* Force text visibility in disabled state */
+  .mobile-header-controls .last-updated-btn.btn-control:disabled {
+    color: rgb(255, 255, 255) !important;
+    opacity: 1 !important;
+  }
+
+  .mobile-header-controls
+    .last-updated-btn.btn-control:disabled
+    .last-updated-label,
+  .mobile-header-controls
+    .last-updated-btn.btn-control:disabled
+    .last-updated-time {
+    color: rgb(0, 0, 0) !important;
+    opacity: 1 !important;
   }
 }

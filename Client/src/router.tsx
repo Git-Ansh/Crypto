@@ -4,6 +4,7 @@ import Dashboard from "@/components/dashboard";
 import { LoginForm } from "@/components/login-form";
 import { SignupForm } from "@/components/signup-form";
 import { useAuth } from "@/contexts/AuthContext";
+import { Loading } from "@/components/ui/loading";
 import TestPage from "./components/TestPage";
 
 // Protected route component that uses our existing AuthContext
@@ -23,7 +24,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   // Show loading state while checking authentication
   if (loading) {
     console.log("Auth still loading, showing loading state");
-    return <div>Loading authentication status...</div>;
+    return <Loading message="Checking authentication..." />;
   }
 
   // Restore original authentication check - remove bypass
@@ -45,7 +46,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   // Show loading state while checking authentication
   if (loading) {
-    return <div>Loading authentication status...</div>;
+    return <Loading message="Checking authentication..." />;
   }
 
   // Redirect to dashboard if user is authenticated

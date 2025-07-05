@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { signInWithGoogle } from "@/lib/auth";
 import { verifyGoogleAuth } from "@/lib/api";
 import { registerUser } from "../lib/api";
+import { LoadingSpinner } from "@/components/ui/loading";
 
 // Define a function to safely use location
 const useSafeLocation = () => {
@@ -200,7 +201,7 @@ export function SignupForm() {
                       type="button"
                     >
                       {loading.google ? (
-                        <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        <LoadingSpinner size="sm" className="mr-2" />
                       ) : (
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -295,7 +296,7 @@ export function SignupForm() {
                     disabled={loading.email || loading.google}
                   >
                     {loading.email ? (
-                      <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      <LoadingSpinner size="sm" className="mr-2" />
                     ) : null}
                     Sign Up
                   </Button>

@@ -6,7 +6,6 @@ import {
   ArrowDown,
   Settings,
   AlertTriangle,
-  Loader2,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
@@ -75,6 +74,7 @@ import { QuickTrade } from "@/components/quick-trade";
 import { Positions } from "@/components/positions";
 import { BotRoadmap } from "@/components/bot-roadmap";
 import { AxiosError } from "axios";
+import { LoadingSpinner, InlineLoading } from "@/components/ui/loading";
 
 // ================== CONFIG ENDPOINTS ==================
 // Replace the Coindesk/CC endpoints with Binance endpoints
@@ -197,6 +197,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const [connectionStatus, setConnectionStatus] = useState<
+    "connected" | "disconnected" | "connecting"
+  >("disconnected");
   const [lastUpdated, setLastUpdated] = useState<string>("");
 
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
@@ -691,11 +694,17 @@ export default function Dashboard() {
   // Global WebSocket connection that subscribes to all top tickers
   const connectWebSocketAll = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+
+    console.log("Setting connection status to connecting");
+    setConnectionStatus("connecting");
     const ws = new WebSocket(WS_ENDPOINT);
     wsRef.current = ws;
+
     ws.onopen = () => {
       console.log("WebSocket connected");
       setWsConnected(true);
+      setConnectionStatus("connected");
+      console.log("Connection status set to connected");
       const subscriptionMessage = {
         method: "SUBSCRIBE",
         params: TOP_SYMBOLS.map((symbol) => symbol.toLowerCase() + "@ticker"),
@@ -703,6 +712,7 @@ export default function Dashboard() {
       };
       ws.send(JSON.stringify(subscriptionMessage));
     };
+
     ws.onmessage = (evt) => {
       try {
         const msg = JSON.parse(evt.data);
@@ -733,17 +743,24 @@ export default function Dashboard() {
         console.error("Error parsing WS message:", err);
       }
     };
+
     ws.onerror = (err) => {
       console.error("WebSocket error:", err);
       setWsConnected(false);
+      setConnectionStatus("disconnected");
     };
+
     ws.onclose = (e) => {
       setWsConnected(false);
+      setConnectionStatus("disconnected");
       if (e.code !== 1000 && e.code !== 1001) {
         console.log(
           "WebSocket disconnected, attempting to reconnect in 5 seconds..."
         );
-        setTimeout(connectWebSocketAll, 5000);
+        setTimeout(() => {
+          setConnectionStatus("connecting");
+          setTimeout(connectWebSocketAll, 100); // Small delay before actual connection attempt
+        }, 5000);
       }
     };
   }, [processBatch]);
@@ -1306,40 +1323,165 @@ export default function Dashboard() {
           </div>
         )}
         <div
-          className="w-full max-w-7xl mx-auto p-2 sm:p-4 overflow-hidden no-scrollbar"
+          className="w-full p-2 sm:p-4 overflow-hidden no-scrollbar sidebar-responsive-content"
           style={{ maxWidth: "100%" }}
         >
           {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
-            <div className="pl-10">
-              <h1 className="text-3xl font-bold crypto-dashboard-title">
-                Crypto Pilot Dashboard
-              </h1>
-            </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
-              <div className="flex items-center gap-2">
-                <div className="text-xs sm:text-sm text-muted-foreground">
-                  Last updated: {lastUpdated || "Never"}
+          <div className="flex flex-col gap-4 mb-4 sm:mb-6">
+            {/* Mobile: Controls row above title, aligned left of sidebar toggle */}
+            <div className="sm:hidden flex items-center min-h-[2.5rem]">
+              <div className="mobile-header-controls">
+                {" "}
+                {/* Using CSS class for better control */}
+                <div className="group relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="btn-control last-updated-btn"
+                    disabled
+                  >
+                    <div className="last-updated-label">Last Updated</div>
+                    <div className="last-updated-time">
+                      {lastUpdated || new Date().toLocaleTimeString()}
+                    </div>
+                  </Button>
+                  {/* Tooltip for Last Updated */}
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-popover text-popover-foreground text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border">
+                    <div className="font-medium">Last Updated</div>
+                    <div className="text-muted-foreground">
+                      {lastUpdated
+                        ? `Data refreshed at ${lastUpdated}`
+                        : "No data refresh yet"}
+                    </div>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-popover"></div>
+                  </div>
                 </div>
-                <span
-                  className={cn(
-                    "inline-block w-2 h-2 rounded-full",
-                    wsConnected ? "bg-green-500" : "bg-red-500"
-                  )}
-                />
-                <span className="text-xs sm:text-sm">
-                  {wsConnected ? "Connected" : "Disconnected"}
-                </span>
+                <div className="group relative">
+                  <span
+                    className={cn(
+                      "connection-indicator inline-block rounded-full transition-all duration-300 cursor-help shadow-lg",
+                      wsConnected
+                        ? "bg-green-500 shadow-green-500/50"
+                        : connectionStatus === "connecting"
+                        ? "bg-yellow-500 shadow-yellow-500/50 animate-pulse"
+                        : "bg-red-500 shadow-red-500/50 animate-ping"
+                    )}
+                    style={
+                      connectionStatus === "connecting"
+                        ? {
+                            animationDuration: "2s",
+                          }
+                        : {}
+                    }
+                    title={
+                      wsConnected
+                        ? "Real-time data connected"
+                        : connectionStatus === "connecting"
+                        ? "Connecting to real-time data..."
+                        : "Connection lost - data may be outdated"
+                    }
+                  />
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-popover text-popover-foreground text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border">
+                    <div className="font-medium">
+                      {wsConnected
+                        ? "Connected"
+                        : connectionStatus === "connecting"
+                        ? "Connecting..."
+                        : "Disconnected"}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {wsConnected
+                        ? "Real-time market data active"
+                        : connectionStatus === "connecting"
+                        ? "Establishing connection..."
+                        : "Attempting to reconnect..."}
+                    </div>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-popover"></div>
+                  </div>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleRefresh}
                   disabled={loading}
+                  className="btn-icon"
                 >
-                  <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                  {loading ? "Loading" : "Refresh"}
+                  <RefreshCw className="h-3 w-3" />
                 </Button>
-                <ModeToggle />
+                <ModeToggle className="btn-icon" />
+              </div>
+            </div>
+
+            {/* Desktop and mobile title row */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="pl-10">
+                <h1 className="text-3xl font-bold crypto-dashboard-title">
+                  Crypto Pilot Dashboard
+                </h1>
+              </div>
+
+              {/* Desktop: Controls on the right */}
+              <div className="hidden sm:flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
+                <div className="flex items-center gap-2">
+                  <div className="text-xs sm:text-sm text-muted-foreground">
+                    Last updated: {lastUpdated || "Never"}
+                  </div>
+                  <div className="group relative">
+                    <span
+                      className={cn(
+                        "inline-block w-3 h-3 rounded-full transition-all duration-300 cursor-help shadow-lg",
+                        wsConnected
+                          ? "bg-green-500 shadow-green-500/50"
+                          : connectionStatus === "connecting"
+                          ? "bg-yellow-500 shadow-yellow-500/50 animate-pulse"
+                          : "bg-red-500 shadow-red-500/50 animate-ping"
+                      )}
+                      style={
+                        connectionStatus === "connecting"
+                          ? {
+                              animationDuration: "2s",
+                            }
+                          : {}
+                      }
+                      title={
+                        wsConnected
+                          ? "Real-time data connected"
+                          : connectionStatus === "connecting"
+                          ? "Connecting to real-time data..."
+                          : "Connection lost - data may be outdated"
+                      }
+                    />
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-popover text-popover-foreground text-sm rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border">
+                      <div className="font-medium">
+                        {wsConnected
+                          ? "Connected"
+                          : connectionStatus === "connecting"
+                          ? "Connecting..."
+                          : "Disconnected"}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {wsConnected
+                          ? "Real-time market data active"
+                          : connectionStatus === "connecting"
+                          ? "Establishing connection..."
+                          : "Attempting to reconnect..."}
+                      </div>
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-popover"></div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefresh}
+                    disabled={loading}
+                  >
+                    <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    {loading ? "Loading" : "Refresh"}
+                  </Button>
+                  <ModeToggle />
+                </div>
               </div>
             </div>
           </div>
@@ -1366,9 +1508,11 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
                 {portfolioLoading ? (
-                  <div className="flex justify-center items-center h-24">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
+                  <InlineLoading
+                    message="Loading portfolio..."
+                    size="md"
+                    className="h-24"
+                  />
                 ) : (
                   <div className="text-sm sm:text-base">
                     <p>
@@ -1667,11 +1811,11 @@ export default function Dashboard() {
               <CardContent className="p-3 sm:p-4 flex justify-center">
                 <div style={{ width: "100%", height: 200 }}>
                   {portfolioChartLoading ? (
-                    <div className="flex items-center justify-center h-full">
-                      <p className="text-sm text-muted-foreground">
-                        Loading chart data...
-                      </p>
-                    </div>
+                    <InlineLoading
+                      message="Loading chart data..."
+                      size="md"
+                      className="h-full"
+                    />
                   ) : (
                     <PortfolioChart
                       data={portfolioHistory}
@@ -1988,7 +2132,10 @@ export default function Dashboard() {
                               colSpan={4}
                               className="text-center text-xs"
                             >
-                              Loading...
+                              <InlineLoading
+                                message="Loading market data..."
+                                size="sm"
+                              />
                             </TableCell>
                           </TableRow>
                         ) : (
