@@ -1,4 +1,3 @@
-import React from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -13,9 +12,10 @@ import { Card } from "@/components/ui/card";
 interface PortfolioChartProps {
   data: any[];
   timeframe: "24h" | "1w" | "1m" | "1y" | "all";
+  isMobile?: boolean;
 }
 
-export function PortfolioChart({ data, timeframe }: PortfolioChartProps) {
+export function PortfolioChart({ data, timeframe, isMobile = false }: PortfolioChartProps) {
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -135,7 +135,12 @@ export function PortfolioChart({ data, timeframe }: PortfolioChartProps) {
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={formatData}
-          margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+          margin={{ 
+            top: 10, 
+            right: isMobile ? 0 : 5, 
+            left: isMobile ? -15 : -10, 
+            bottom: 0 
+          }}
         >
           <defs>
             <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
@@ -147,16 +152,16 @@ export function PortfolioChart({ data, timeframe }: PortfolioChartProps) {
           <XAxis
             dataKey="timestamp"
             tickFormatter={formatXAxis}
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: isMobile ? 10 : 12 }}
             tickLine={false}
             axisLine={false}
           />
           <YAxis
-            tickFormatter={(value) => `$${value.toLocaleString()}`}
-            tick={{ fontSize: 12 }}
+            tickFormatter={(value) => isMobile ? `$${(value/1000).toFixed(0)}k` : `$${value.toLocaleString()}`}
+            tick={{ fontSize: isMobile ? 10 : 12 }}
             tickLine={false}
             axisLine={false}
-            width={80}
+            width={isMobile ? 45 : 65}
           />
           <Tooltip content={<CustomTooltip />} />
           <Area

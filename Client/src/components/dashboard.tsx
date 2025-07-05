@@ -75,6 +75,7 @@ import { Positions } from "@/components/positions";
 import { BotRoadmap } from "@/components/bot-roadmap";
 import { AxiosError } from "axios";
 import { LoadingSpinner, InlineLoading } from "@/components/ui/loading";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // ================== CONFIG ENDPOINTS ==================
 // Replace the Coindesk/CC endpoints with Binance endpoints
@@ -191,6 +192,7 @@ interface SimplePosition {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, logout, loading: authLoading } = useAuth();
+  const isMobile = useIsMobile();
 
   const [cryptoData, setCryptoData] = useState<CryptoInfo | null>(null);
   const [chartData, setChartData] = useState<KlineData[]>([]);
@@ -1493,65 +1495,195 @@ export default function Dashboard() {
             </Card>
           )}
           {/* Row 1: Portfolio & Bot */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
-            {/* Portfolio Overview */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+            {/* Consolidated Portfolio Overview & Value Chart */}
             <Card className="lg:col-span-1">
               <CardHeader className="p-3 sm:p-4 pb-0">
-                <CardTitle className="text-base sm:text-lg">
-                  Portfolio Overview
-                  <p className="mb-2 text-muted-foreground">
-                    {isNewUser
-                      ? `Welcome, ${user?.name || "Trader"}!`
-                      : `Welcome back, ${user?.name || "Trader"}!`}
-                  </p>
-                </CardTitle>
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <CardTitle className="text-base sm:text-lg">
+                      Portfolio Overview
+                    </CardTitle>
+                    <p className="mb-2 text-muted-foreground text-sm">
+                      {isNewUser
+                        ? `Welcome, ${user?.name || "Trader"}!`
+                        : `Welcome back, ${user?.name || "Trader"}!`}
+                    </p>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-[100px] flex justify-between items-center"
+                      >
+                        {portfolioDateRange}
+                        <ChevronDown className="h-4 w-4 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        onClick={() => setPortfolioDateRange("24h")}
+                      >
+                        24h
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setPortfolioDateRange("1w")}
+                      >
+                        1 Week
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setPortfolioDateRange("1m")}
+                      >
+                        1 Month
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setPortfolioDateRange("1y")}
+                      >
+                        1 Year
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setPortfolioDateRange("all")}
+                      >
+                        All Time
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
                 {portfolioLoading ? (
                   <InlineLoading
                     message="Loading portfolio..."
                     size="md"
-                    className="h-24"
+                    className="h-48"
                   />
                 ) : (
-                  <div className="text-sm sm:text-base">
-                    <p>
-                      <strong>Balance:</strong>{" "}
-                      {formatCurrency(portfolioData?.paperBalance || 0)}
-                    </p>
-                    <p>
-                      <strong>Overall P/L:</strong>{" "}
-                      <span
-                        className={
-                          (portfolioData?.profitLossPercentage || 0) >= 0
-                            ? "text-green-600"
-                            : "text-red-600"
-                        }
-                      >
-                        {(portfolioData?.profitLossPercentage || 0) >= 0
-                          ? "+"
-                          : "-"}
-                        {Math.abs(
-                          portfolioData?.profitLossPercentage || 0
-                        ).toFixed(2)}
-                        %
-                      </span>
-                    </p>
-                    <div className="mt-2">
-                      <strong>Open Positions:</strong>
-                      {positions.length === 0 ? (
-                        <p className="ml-4 mt-1 text-muted-foreground">
-                          No positions held
+                  <div className="space-y-2">
+                    {/* Portfolio Stats - Mobile: 2 rows, Desktop: 3-column */}
+                    <div className="flex flex-col space-y-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0 text-sm">
+                      {/* Mobile: First row with Balance and Open Positions side by side */}
+                      <div className="grid grid-cols-2 gap-4 sm:block sm:col-span-1">
+                        <div className="flex justify-between sm:block">
+                          <p className="text-muted-foreground">Balance</p>
+                          <p className="text-lg font-semibold sm:mt-1">
+                            {formatCurrency(portfolioData?.paperBalance || 0)}
+                          </p>
+                        </div>
+                        <div className="sm:hidden">
+                          <p className="text-muted-foreground mb-1">
+                            Open Positions
+                          </p>
+                          {positions.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">
+                              No positions held
+                            </p>
+                          ) : (
+                            <div className="space-y-1">
+                              {openPositions
+                                .slice(0, 2)
+                                .map((pos: SimplePosition) => (
+                                  <div
+                                    key={pos.symbol}
+                                    className="flex justify-between text-xs"
+                                  >
+                                    <span>{pos.symbol}</span>
+                                    <span>{pos.amount.toFixed(4)}</span>
+                                  </div>
+                                ))}
+                              {openPositions.length > 2 && (
+                                <p className="text-xs text-muted-foreground">
+                                  +{openPositions.length - 2} more
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Mobile: Second row with Overall P/L, Desktop: Second column */}
+                      <div className="flex justify-between sm:block">
+                        <p className="text-muted-foreground">Overall P/L</p>
+                        <p
+                          className={cn(
+                            "text-lg font-semibold sm:mt-1",
+                            (portfolioData?.profitLossPercentage || 0) >= 0
+                              ? "text-green-600"
+                              : "text-red-600"
+                          )}
+                        >
+                          {(portfolioData?.profitLossPercentage || 0) >= 0
+                            ? "+"
+                            : ""}
+                          {(portfolioData?.profitLossPercentage || 0).toFixed(
+                            2
+                          )}
+                          %
                         </p>
-                      ) : (
-                        <ul className="list-disc ml-4 mt-1">
-                          {openPositions.map((pos: SimplePosition) => (
-                            <li key={pos.symbol}>
-                              {pos.symbol}: {pos.amount.toFixed(6)}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                      </div>
+
+                      {/* Desktop: Third column - Open Positions */}
+                      <div className="hidden sm:block">
+                        <div className="flex justify-between items-start sm:block">
+                          <p className="text-muted-foreground">
+                            Open Positions
+                          </p>
+                          {positions.length === 0 ? (
+                            <p className="text-sm text-muted-foreground sm:mt-1">
+                              No positions held
+                            </p>
+                          ) : (
+                            <div className="text-right sm:text-left sm:mt-1">
+                              <div className="space-y-1 sm:space-y-1">
+                                {openPositions
+                                  .slice(0, 2)
+                                  .map((pos: SimplePosition) => (
+                                    <div
+                                      key={pos.symbol}
+                                      className="flex justify-between text-xs sm:justify-between"
+                                    >
+                                      <span>{pos.symbol}</span>
+                                      <span>{pos.amount.toFixed(4)}</span>
+                                    </div>
+                                  ))}
+                                {openPositions.length > 2 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    +{openPositions.length - 2} more
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Portfolio Value Chart - Mobile: Larger, Desktop: Same */}
+                    <div className="border-t pt-2 -mx-3 sm:-mx-4 px-2 sm:px-3">
+                      <div className="w-full h-60 sm:h-62 overflow-hidden rounded-md">
+                        {portfolioChartLoading ? (
+                          <InlineLoading
+                            message="Loading chart data..."
+                            size="md"
+                            className="h-full"
+                          />
+                        ) : (
+                          <div className="w-full h-full overflow-visible">
+                            <PortfolioChart
+                              data={portfolioHistory}
+                              timeframe={
+                                portfolioDateRange as
+                                  | "24h"
+                                  | "1w"
+                                  | "1m"
+                                  | "1y"
+                                  | "all"
+                              }
+                              isMobile={isMobile}
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1580,7 +1712,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2">
                       <div
                         className={cn(
-                          "h-3 w-3 rounded-full",
+                          "h-3 w-3 rounded-full flex-shrink-0",
                           botActive ? "bg-green-500" : "bg-red-500"
                         )}
                       />
@@ -1645,23 +1777,23 @@ export default function Dashboard() {
                     </DropdownMenu>
                   </div>
                   <div className="pt-2">
-                    <p className="text-sm font-medium mb-2">Bot Performance</p>
-                    <div className="space-y-2">
+                    <p className="text-sm font-medium mb-3">Bot Performance</p>
+                    <div className="space-y-3 sm:space-y-2">
                       <div>
-                        <div className="flex justify-between text-xs mb-1">
+                        <div className="flex justify-between text-sm sm:text-xs mb-2 sm:mb-1">
                           <span>Success Rate</span>
                           <span className="font-medium">{botSuccessRate}%</span>
                         </div>
-                        <Progress value={botSuccessRate} className="h-1.5" />
+                        <Progress value={botSuccessRate} className="h-2 sm:h-1.5" />
                       </div>
                       <div>
-                        <div className="flex justify-between text-xs mb-1">
+                        <div className="flex justify-between text-sm sm:text-xs mb-2 sm:mb-1">
                           <span>Avg. Trades/Day</span>
                           <span className="font-medium">{botTradesPerDay}</span>
                         </div>
                         <Progress
                           value={botTradesPerDay * 5}
-                          className="h-1.5"
+                          className="h-2 sm:h-1.5"
                         />
                       </div>
                     </div>
@@ -1758,72 +1890,6 @@ export default function Dashboard() {
                       {botActive ? "Pause Bot" : "Activate Bot"}
                     </Button>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-            {/* Portfolio Value Chart */}
-            <Card className="lg:col-span-1">
-              <CardHeader className="p-3 sm:p-4 pb-0">
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-base sm:text-lg">
-                    Portfolio Value
-                  </CardTitle>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="h-8 w-[120px] flex justify-between items-center"
-                      >
-                        {portfolioDateRange}
-                        <ChevronDown className="h-4 w-4 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("24h")}
-                      >
-                        24h
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("1w")}
-                      >
-                        1 Week
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("1m")}
-                      >
-                        1 Month
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("1y")}
-                      >
-                        1 Year
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("all")}
-                      >
-                        All Time
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              <CardContent className="p-3 sm:p-4 flex justify-center">
-                <div style={{ width: "100%", height: 200 }}>
-                  {portfolioChartLoading ? (
-                    <InlineLoading
-                      message="Loading chart data..."
-                      size="md"
-                      className="h-full"
-                    />
-                  ) : (
-                    <PortfolioChart
-                      data={portfolioHistory}
-                      timeframe={
-                        portfolioDateRange as "24h" | "1w" | "1m" | "1y" | "all"
-                      }
-                    />
-                  )}
                 </div>
               </CardContent>
             </Card>
