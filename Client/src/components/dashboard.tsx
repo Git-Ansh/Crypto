@@ -65,6 +65,7 @@ import {
   SidebarProvider,
   SidebarInset,
   SidebarRail,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { PortfolioChart } from "@/components/portfolio-chart";
 import { TradeHistory } from "@/components/trade-history";
@@ -202,6 +203,7 @@ export default function Dashboard() {
     "connected" | "disconnected" | "connecting"
   >("disconnected");
   const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [forceUpdate, setForceUpdate] = useState<number>(0);
 
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
   const [portfolioDateRange, setPortfolioDateRange] = useState<
@@ -315,7 +317,16 @@ export default function Dashboard() {
     },
   ]);
 
-  // On mount, fill in some placeholder trades
+  // Timer to update the live time display every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setForceUpdate((prev) => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // On mount, fill in some placeholder trades and set initial lastUpdated
   useEffect(() => {
     setRecentTrades([
       {
@@ -335,6 +346,10 @@ export default function Dashboard() {
         timestamp: new Date().toLocaleString(),
       },
     ]);
+
+    // Set initial lastUpdated to test seconds display
+    const fiveSecondsAgo = new Date(Date.now() - 5000);
+    setLastUpdated(fiveSecondsAgo.toLocaleTimeString());
   }, []);
 
   // News data state
@@ -796,6 +811,11 @@ export default function Dashboard() {
         const ticker = await fetchTickerDataForCurrency(symbol);
         setCryptoData(ticker);
         setLastUpdated(new Date().toLocaleTimeString());
+        // Add a small delay and then set a test value for seconds display
+        setTimeout(() => {
+          const tenSecondsAgo = new Date(Date.now() - 10000);
+          setLastUpdated(tenSecondsAgo.toLocaleTimeString());
+        }, 1000);
         setLoading(false);
       } catch (err: any) {
         console.error(`Error initializing for ${symbol}:`, err);
@@ -1348,6 +1368,228 @@ export default function Dashboard() {
               margin-bottom: 12px !important;
             }
             
+            /* Floating header tray styles for mobile - macOS dock style */
+            .mobile-floating-header {
+              position: fixed !important;
+              top: 8px !important;
+              left: 8px !important;
+              right: 8px !important;
+              z-index: 50 !important;
+              background: rgba(15, 23, 43, 0.85) !important;
+              backdrop-filter: blur(12px) !important;
+              -webkit-backdrop-filter: blur(12px) !important;
+              border: 1px solid rgba(255, 255, 255, 0.1) !important;
+              border-radius: 16px !important;
+              padding: 6px 8px !important;
+              margin: 0 !important;
+              width: calc(100% - 16px) !important;
+              max-width: calc(100vw - 16px) !important;
+              box-sizing: border-box !important;
+              box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+            }
+            
+            /* Light mode support for mobile floating header */
+            .light .mobile-floating-header {
+              background: rgba(255, 255, 255, 0.85) !important;
+              border: 1px solid rgba(0, 0, 0, 0.1) !important;
+              box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+            }
+            
+            .mobile-header-content {
+              display: flex !important;
+              align-items: center !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              min-height: 40px !important;
+              overflow: visible !important;
+              gap: 6px !important;
+              justify-content: space-between !important;
+              padding: 0 2px !important;
+            }
+            
+            /* Compact button styles for mobile tray */
+            
+            .mobile-tray-icon-button {
+              height: 36px !important;
+              width: 36px !important;
+              min-height: 36px !important;
+              min-width: 36px !important;
+              padding: 0 !important;
+              border-radius: 10px !important;
+              flex-shrink: 0 !important;
+              display: flex !important;
+              align-items: center !important;
+              justify-content: center !important;
+            }
+            
+            .mobile-connection-indicator {
+              width: 12px !important;
+              height: 12px !important;
+              flex-shrink: 0 !important;
+            }
+            
+            .mobile-last-updated-section {
+              display: flex !important;
+              align-items: center !important;
+              gap: 0 !important;
+              flex-shrink: 0 !important;
+              min-width: 0 !important;
+              overflow: visible !important;
+              height: 36px !important;
+              flex-basis: auto !important;
+              max-width: 130px !important;
+              margin-right: 2px !important;
+            }
+            
+            .mobile-last-updated-combined {
+              height: 36px !important;
+              min-height: 36px !important;
+              padding: 0 12px !important;
+              font-size: 11px !important;
+              line-height: 1.2 !important;
+              border-radius: 10px !important;
+              white-space: nowrap !important;
+              overflow: visible !important;
+              text-overflow: clip !important;
+              flex-shrink: 0 !important;
+              display: flex !important;
+              flex-direction: column !important;
+              align-items: center !important;
+              justify-content: center !important;
+              min-width: 120px !important;
+              width: 100% !important;
+              color: white !important;
+              background-color: rgba(0, 0, 0, 0.9) !important;
+              border-color: rgba(0, 0, 0, 0.3) !important;
+            }
+            
+            /* Dark mode support for mobile floating header */
+            .dark .mobile-last-updated-combined {
+              background-color: rgba(255, 255, 255, 0.9) !important;
+              border-color: rgba(255, 255, 255, 0.3) !important;
+              color: black !important;
+            }
+            
+            .mobile-last-updated-combined * {
+              color: white !important;
+              overflow: visible !important;
+            }
+            
+            /* Dark mode text colors */
+            .dark .mobile-last-updated-combined * {
+              color: black !important;
+            }
+            
+            /* Extra specificity for time element */
+            .mobile-last-updated-section .mobile-last-updated-combined .mobile-last-updated-time {
+              color: white !important;
+              font-weight: 600 !important;
+            }
+            
+            /* Dark mode specificity */
+            .dark .mobile-last-updated-section .mobile-last-updated-combined .mobile-last-updated-time {
+              color: black !important;
+            }
+            
+            /* Force text color on all mobile tray text elements */
+            .mobile-floating-header .mobile-last-updated-time,
+            .mobile-floating-header .mobile-last-updated-combined .mobile-last-updated-time {
+              color: rgb(255, 255, 255) !important;
+              text-shadow: none !important;
+              opacity: 1 !important;
+              filter: none !important;
+            }
+            
+            /* Dark mode overrides */
+            .dark .mobile-floating-header .mobile-last-updated-time,
+            .dark .mobile-floating-header .mobile-last-updated-combined .mobile-last-updated-time {
+              color: rgb(0, 0, 0) !important;
+            }
+            
+            /* Override any disabled or muted styles */
+            .mobile-last-updated-combined:disabled,
+            .mobile-last-updated-combined[disabled],
+            .mobile-last-updated-combined .mobile-last-updated-time {
+              color: rgb(255, 255, 255) !important;
+              opacity: 1 !important;
+            }
+            
+            /* Dark mode disabled styles */
+            .dark .mobile-last-updated-combined:disabled,
+            .dark .mobile-last-updated-combined[disabled],
+            .dark .mobile-last-updated-combined .mobile-last-updated-time {
+              color: rgb(0, 0, 0) !important;
+            }
+            
+            .mobile-last-updated-text {
+              font-size: 8px !important;
+              line-height: 1 !important;
+              opacity: 0.8 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              color: rgb(255, 255, 255) !important;
+              text-transform: uppercase !important;
+              text-align: center !important;
+            }
+            
+            /* Dark mode text color */
+            .dark .mobile-last-updated-text {
+              color: rgb(0, 0, 0) !important;
+            }
+            
+            .mobile-last-updated-time {
+              font-size: 11px !important;
+              line-height: 1 !important;
+              font-weight: 600 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              color: white !important;
+              text-align: center !important;
+            }
+            
+            /* Dark mode time color */
+            .dark .mobile-last-updated-time {
+              color: black !important;
+            }
+            
+            .mobile-connection-wrapper {
+              display: flex !important;
+              align-items: center !important;
+              justify-content: center !important;
+              flex: 1 !important;
+              min-width: 20px !important;
+              max-width: 40px !important;
+              margin: 0 4px !important;
+            }
+            
+            /* Right side button group for better spacing */
+            .mobile-right-buttons {
+              display: flex !important;
+              align-items: center !important;
+              gap: 4px !important;
+              flex-shrink: 0 !important;
+              margin-left: 2px !important;
+            }
+            
+            /* Adjust main content padding for mobile floating header */
+            .mobile-content-wrapper {
+              padding-top: 56px !important;
+            }
+            
+            /* Restore mobile title positioning below tray */
+            .mobile-title-section {
+              padding: 12px 0 8px 0 !important;
+              margin-bottom: 16px !important;
+            }
+            
+            .mobile-title-section h1 {
+              font-size: 24px !important;
+              font-weight: 700 !important;
+              text-align: left !important;
+              padding-left: 40px !important;
+            }
+          }
+            
             /* Mobile-specific toggle switch fixes */
             .toggle-switch-mobile {
               width: 32px !important;
@@ -1411,96 +1653,167 @@ export default function Dashboard() {
           </div>
         )}
         <div
-          className="w-full p-2 sm:p-4 overflow-hidden no-scrollbar sidebar-responsive-content"
+          className={cn(
+            "w-full p-2 sm:p-4 overflow-hidden no-scrollbar sidebar-responsive-content",
+            isMobile && "mobile-content-wrapper"
+          )}
           style={{ maxWidth: "100%" }}
         >
-          {/* Header */}
-          <div className="flex flex-col gap-4 mb-4 sm:mb-6">
-            {/* Mobile: Controls row above title, aligned left of sidebar toggle */}
-            <div className="sm:hidden flex items-center min-h-[2.5rem]">
-              <div className="mobile-header-controls">
-                {" "}
-                {/* Using CSS class for better control */}
-                <div className="group relative">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="btn-control last-updated-btn"
-                    disabled
+          {/* Mobile Floating Header Tray */}
+          {isMobile && (
+            <div className="mobile-floating-header">
+              <div className="mobile-header-content">
+                {/* 1. Sidebar Toggle Button */}
+                <SidebarTrigger className="mobile-tray-icon-button bg-transparent border-black/20 dark:border-white/20 text-black/90 dark:text-white/90 hover:bg-black/10 dark:hover:bg-white/10" />
+
+                {/* 2. "LAST UPDATED" combined label with timestamp */}
+                <div className="group relative mobile-last-updated-section">
+                  <div
+                    className="mobile-last-updated-combined"
+                    style={{
+                      color: "white !important",
+                      backgroundColor: "rgba(0, 0, 0, 0.9) !important",
+                      borderColor: "rgba(0, 0, 0, 0.3) !important",
+                      minWidth: "130px",
+                      border: "1px solid rgba(0, 0, 0, 0.3)",
+                      borderRadius: "10px",
+                      padding: "0 16px",
+                      height: "36px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
                   >
-                    <div className="last-updated-label">Last Updated</div>
-                    <div className="last-updated-time">
-                      {lastUpdated || new Date().toLocaleTimeString()}
+                    <div
+                      className="mobile-last-updated-text"
+                      style={{
+                        color: "rgb(255, 255, 255) !important",
+                        fontSize: "8px !important",
+                        lineHeight: "1 !important",
+                        textTransform: "uppercase",
+                        opacity: "0.8 !important",
+                      }}
+                    >
+                      LAST UPDATED
                     </div>
-                  </Button>
+                    <div
+                      className="mobile-last-updated-time"
+                      style={{
+                        color: "rgb(255, 255, 255) !important",
+                        fontSize: "11px !important",
+                        fontWeight: "600 !important",
+                        lineHeight: "1 !important",
+                        textShadow: "none !important",
+                        opacity: "1 !important",
+                        filter: "none !important",
+                      }}
+                    >
+                      {(() => {
+                        // Show current live time (e.g., 6:17:23)
+                        const now = new Date();
+                        // Include forceUpdate to trigger re-render every second
+                        forceUpdate;
+                        return now.toLocaleTimeString("en-US", {
+                          hour12: false,
+                          hour: "numeric",
+                          minute: "2-digit",
+                          second: "2-digit",
+                        });
+                      })()}
+                    </div>
+                  </div>
                   {/* Tooltip for Last Updated */}
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-popover text-popover-foreground text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border">
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-black/80 text-white text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border border-white/20">
                     <div className="font-medium">Last Updated</div>
-                    <div className="text-muted-foreground">
+                    <div className="text-white/70">
                       {lastUpdated
                         ? `Data refreshed at ${lastUpdated}`
                         : "No data refresh yet"}
                     </div>
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-popover"></div>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black/80"></div>
                   </div>
                 </div>
-                <div className="group relative">
-                  <span
-                    className={cn(
-                      "connection-indicator inline-block rounded-full transition-all duration-300 cursor-help shadow-lg",
-                      wsConnected
-                        ? "bg-green-500 shadow-green-500/50"
-                        : connectionStatus === "connecting"
-                        ? "bg-yellow-500 shadow-yellow-500/50 animate-pulse"
-                        : "bg-red-500 shadow-red-500/50 animate-ping"
-                    )}
-                    style={
-                      connectionStatus === "connecting"
-                        ? {
-                            animationDuration: "2s",
-                          }
-                        : {}
-                    }
-                    title={
-                      wsConnected
-                        ? "Real-time data connected"
-                        : connectionStatus === "connecting"
-                        ? "Connecting to real-time data..."
-                        : "Connection lost - data may be outdated"
-                    }
-                  />
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-popover text-popover-foreground text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border">
-                    <div className="font-medium">
-                      {wsConnected
-                        ? "Connected"
-                        : connectionStatus === "connecting"
-                        ? "Connecting..."
-                        : "Disconnected"}
+
+                {/* 3. Connection Indicator - Centered in remaining space */}
+                <div className="mobile-connection-wrapper">
+                  <div className="group relative">
+                    <span
+                      className={cn(
+                        "mobile-connection-indicator inline-block rounded-full transition-all duration-300 cursor-help shadow-lg",
+                        wsConnected
+                          ? "bg-green-500 shadow-green-500/50"
+                          : connectionStatus === "connecting"
+                          ? "bg-yellow-500 shadow-yellow-500/50 animate-pulse"
+                          : "bg-red-500 shadow-red-500/50 animate-ping"
+                      )}
+                      style={
+                        connectionStatus === "connecting"
+                          ? {
+                              animationDuration: "2s",
+                            }
+                          : {}
+                      }
+                      title={
+                        wsConnected
+                          ? "Real-time data connected"
+                          : connectionStatus === "connecting"
+                          ? "Connecting to real-time data..."
+                          : "Connection lost - data may be outdated"
+                      }
+                    />
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-black/80 text-white text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border border-white/20">
+                      <div className="font-medium">
+                        {wsConnected
+                          ? "Connected"
+                          : connectionStatus === "connecting"
+                          ? "Connecting..."
+                          : "Disconnected"}
+                      </div>
+                      <div className="text-white/70">
+                        {wsConnected
+                          ? "Real-time market data active"
+                          : connectionStatus === "connecting"
+                          ? "Establishing connection..."
+                          : "Attempting to reconnect..."}
+                      </div>
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black/80"></div>
                     </div>
-                    <div className="text-muted-foreground">
-                      {wsConnected
-                        ? "Real-time market data active"
-                        : connectionStatus === "connecting"
-                        ? "Establishing connection..."
-                        : "Attempting to reconnect..."}
-                    </div>
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-popover"></div>
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRefresh}
-                  disabled={loading}
-                  className="btn-icon"
-                >
-                  <RefreshCw className="h-3 w-3" />
-                </Button>
-                <ModeToggle className="btn-icon" />
+
+                {/* 4. & 5. Right Side Buttons */}
+                <div className="mobile-right-buttons">
+                  {/* 4. Refresh Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefresh}
+                    disabled={loading}
+                    className="mobile-tray-icon-button bg-transparent border-black/20 dark:border-white/20 text-black/90 dark:text-white/90 hover:bg-black/10 dark:hover:bg-white/10"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+
+                  {/* 5. Mode Toggle */}
+                  <ModeToggle className="mobile-tray-icon-button bg-transparent border-black/20 dark:border-white/20 text-black/90 dark:text-white/90 hover:bg-black/10 dark:hover:bg-white/10" />
+                </div>
               </div>
             </div>
+          )}
 
+          {/* Mobile Title Section - Below the tray */}
+          {isMobile && (
+            <div className="mobile-title-section">
+              <h1 className="text-3xl font-bold crypto-dashboard-title">
+                Crypto Pilot Dashboard
+              </h1>
+            </div>
+          )}
+
+          {/* Header - Desktop Only */}
+          <div className="hidden sm:flex flex-col gap-4 mb-4 sm:mb-6">
             {/* Desktop and mobile title row */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="pl-10">
