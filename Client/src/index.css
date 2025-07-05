@@ -1353,7 +1353,7 @@ button:focus-visible {
     align-items: center !important;
     gap: 0.25rem !important;
     margin-left: 3rem !important; /* Space for sidebar toggle */
-    margin-top: 0.53rem !important; /* Lower the controls more to align with sidebar toggle */
+    margin-top: 0.6rem !important; /* Lower the controls more to align with sidebar toggle */
     min-width: 0 !important;
     flex-wrap: nowrap !important;
     overflow: hidden !important;
@@ -1364,8 +1364,8 @@ button:focus-visible {
   /* Mobile header control buttons - same size as sidebar toggle */
   .mobile-header-controls .btn-control {
     height: 2rem !important; /* 40px - same as sidebar toggle */
-    min-height: 2.1rem !important;
-    max-height: 2.1rem !important;
+    min-height: 2rem !important;
+    max-height: 2rem !important;
     padding: 0.25rem 0.5rem !important;
     font-size: 0.7rem !important;
     flex-shrink: 0 !important;
@@ -1375,9 +1375,9 @@ button:focus-visible {
   }
 
   .mobile-header-controls .btn-icon {
-    height: 2.1rem !important; /* Match the last updated button height */
+    height: 2rem !important; /* Match the last updated button height */
     width: 2.1rem !important; /* Square dimensions */
-    min-width: 2.1rem !important;
+    min-width: 2rem !important;
     max-width: 2.1rem !important;
     padding: 0 !important;
     flex-shrink: 0 !important;
