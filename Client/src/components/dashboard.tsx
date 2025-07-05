@@ -57,7 +57,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { config } from "@/lib/config";
@@ -1314,6 +1313,93 @@ export default function Dashboard() {
           .light .loading-overlay {
             background-color: rgba(255, 255, 255, 0.8);
           }
+          
+          /* Mobile-specific overrides for Bot Status & Strategy card */
+          @media (max-width: 767px) {
+            .bot-status-indicator {
+              width: 12px !important;
+              height: 12px !important;
+              min-width: 12px !important;
+              min-height: 12px !important;
+              flex-shrink: 0 !important;
+            }
+            
+            /* Aggressive progress bar targeting - make them slim and clean */
+            .bot-progress-bar,
+            .bot-progress-bar *,
+            .bot-progress-bar > *,
+            .bot-progress-bar div {
+              height: 6px !important;
+              min-height: 6px !important;
+              max-height: 6px !important;
+            }
+            
+            /* Ensure progress indicator fits perfectly */
+            .bot-progress-bar > div {
+              top: 0 !important;
+              bottom: 0 !important;
+              border-radius: 9999px !important;
+            }
+            
+            .bot-section-spacing {
+              margin-bottom: 16px !important;
+            }
+            .bot-performance-spacing {
+              margin-bottom: 12px !important;
+            }
+            
+            /* Mobile-specific toggle switch fixes */
+            .toggle-switch-mobile {
+              width: 32px !important;
+              height: 16px !important;
+              min-width: 32px !important;
+              min-height: 16px !important;
+              display: flex !important;
+              align-items: center !important;
+              padding: 1px !important;
+            }
+            
+            .toggle-thumb-mobile {
+              width: 12px !important;
+              height: 12px !important;
+              min-width: 12px !important;
+              min-height: 12px !important;
+              margin: 0 !important;
+              position: absolute !important;
+              top: 50% !important;
+              left: 2px !important;
+              transform: translateY(-50%) !important;
+              transition: transform 200ms ease-in-out, left 200ms ease-in-out !important;
+            }
+            
+            .toggle-switch-mobile[data-state="checked"] .toggle-thumb-mobile {
+              left: 18px !important;
+              transform: translateY(-50%) !important;
+            }
+            
+            .toggle-switch-mobile[data-state="unchecked"] .toggle-thumb-mobile {
+              left: 2px !important;
+              transform: translateY(-50%) !important;
+            }
+          }
+          
+          /* Desktop progress bar styles */
+          @media (min-width: 768px) {
+            .bot-progress-bar,
+            .bot-progress-bar *,
+            .bot-progress-bar > *,
+            .bot-progress-bar div {
+              height: 4px !important;
+              min-height: 4px !important;
+              max-height: 4px !important;
+            }
+            
+            .bot-progress-bar > div {
+              top: 0 !important;
+              bottom: 0 !important;
+              border-radius: 9999px !important;
+            }
+          }
         `}</style>
         {(loading || isLoadingCurrencies) && (
           <div className="loading-overlay">
@@ -1707,28 +1793,27 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
-                <div className="space-y-3">
-                  <div className="flex items-center">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={cn(
-                          "h-3 w-3 rounded-full flex-shrink-0",
-                          botActive ? "bg-green-500" : "bg-red-500"
-                        )}
-                      />
-                      <p className="text-sm font-medium">
-                        Status:{" "}
-                        <span
-                          className={
-                            botActive ? "text-green-600" : "text-red-600"
-                          }
-                        >
-                          {botActive ? "Active" : "Paused"}
-                        </span>
-                      </p>
-                    </div>
+                {/* Mobile-first layout with forced CSS classes */}
+                <div className="space-y-4 sm:space-y-3">
+                  <div className="flex items-center gap-3 bot-section-spacing">
+                    <div
+                      className={cn(
+                        "bot-status-indicator w-3 h-3 sm:w-4 sm:h-4 rounded-full shrink-0 flex-shrink-0",
+                        botActive ? "bg-green-500" : "bg-red-500"
+                      )}
+                    />
+                    <p className="text-sm font-medium">
+                      Status:{" "}
+                      <span
+                        className={
+                          botActive ? "text-green-600" : "text-red-600"
+                        }
+                      >
+                        {botActive ? "Active" : "Paused"}
+                      </span>
+                    </p>
                   </div>
-                  <div>
+                  <div className="bot-section-spacing">
                     <Label
                       htmlFor="strategy-select"
                       className="text-sm font-medium"
@@ -1740,7 +1825,7 @@ export default function Dashboard() {
                         <Button
                           id="strategy-select"
                           variant="outline"
-                          className="mt-1 w-full flex justify-between items-center"
+                          className="mt-1 w-full flex justify-between items-center h-9 sm:h-auto"
                         >
                           {botStrategy || "Select strategy"}
                           <ChevronDown className="h-4 w-4 opacity-50" />
@@ -1748,7 +1833,7 @@ export default function Dashboard() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="start"
-                        className="w-[500px] h-auto"
+                        className="w-[280px] sm:w-[500px] h-auto"
                       >
                         <DropdownMenuItem
                           onClick={() => setBotStrategy("Aggressive Growth")}
@@ -1776,36 +1861,47 @@ export default function Dashboard() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <div className="pt-2">
-                    <p className="text-sm font-medium mb-3">Bot Performance</p>
+                  <div className="bot-section-spacing">
+                    <p className="text-sm font-medium bot-performance-spacing sm:mb-2">
+                      Bot Performance
+                    </p>
                     <div className="space-y-3 sm:space-y-2">
                       <div>
-                        <div className="flex justify-between text-sm sm:text-xs mb-2 sm:mb-1">
+                        <div className="flex justify-between text-sm sm:text-xs mb-1">
                           <span>Success Rate</span>
                           <span className="font-medium">{botSuccessRate}%</span>
                         </div>
-                        <Progress value={botSuccessRate} className="h-2 sm:h-1.5" />
+                        <div className="bot-progress-bar w-full bg-secondary rounded-full h-1.5 sm:h-1 overflow-hidden relative">
+                          <div
+                            className="bg-primary h-full rounded-full transition-all duration-300 ease-in-out absolute top-0 left-0"
+                            style={{ width: `${botSuccessRate}%` }}
+                          />
+                        </div>
                       </div>
                       <div>
-                        <div className="flex justify-between text-sm sm:text-xs mb-2 sm:mb-1">
+                        <div className="flex justify-between text-sm sm:text-xs mb-1">
                           <span>Avg. Trades/Day</span>
                           <span className="font-medium">{botTradesPerDay}</span>
                         </div>
-                        <Progress
-                          value={botTradesPerDay * 5}
-                          className="h-2 sm:h-1.5"
-                        />
+                        <div className="bot-progress-bar w-full bg-secondary rounded-full h-1.5 sm:h-1 overflow-hidden relative">
+                          <div
+                            className="bg-primary h-full rounded-full transition-all duration-300 ease-in-out absolute top-0 left-0"
+                            style={{
+                              width: `${Math.min(botTradesPerDay * 5, 100)}%`,
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
                   {botShowAdvanced && (
-                    <div className="pt-2 border-t">
-                      <p className="text-sm font-medium mb-2">
+                    <div className="pt-3 sm:pt-2 border-t">
+                      <p className="text-sm font-medium mb-3 sm:mb-2">
                         Advanced Settings
                       </p>
                       <div className="space-y-4">
                         <div>
-                          <div className="flex justify-between items-center mb-1">
+                          <div className="flex justify-between items-center mb-2 sm:mb-1">
                             <Label htmlFor="risk-level" className="text-xs">
                               Risk Level
                             </Label>
@@ -1822,7 +1918,7 @@ export default function Dashboard() {
                             onValueChange={(value) => setBotRiskLevel(value[0])}
                           />
                           {botRiskLevel > 70 && (
-                            <div className="flex items-center mt-1 text-amber-600 text-[10px] gap-1">
+                            <div className="flex items-center mt-2 sm:mt-1 text-amber-600 text-xs sm:text-[10px] gap-1">
                               <AlertTriangle className="h-3 w-3" />
                               <span>
                                 High risk settings may lead to increased
@@ -1836,19 +1932,29 @@ export default function Dashboard() {
                             <Label htmlFor="auto-rebalance" className="text-xs">
                               Auto-Rebalance
                             </Label>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-xs sm:text-[10px] text-muted-foreground">
                               Maintains target allocation
                             </span>
                           </div>
                           <div
-                            className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out"
+                            className={cn(
+                              "relative cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out",
+                              "toggle-switch-mobile sm:inline-flex sm:h-[24px] sm:w-[44px] sm:shrink-0",
+                              botAutoRebalance ? "bg-primary" : "bg-input"
+                            )}
                             data-state={
                               botAutoRebalance ? "checked" : "unchecked"
                             }
                             onClick={() => setBotAutoRebalance((prev) => !prev)}
                           >
                             <span
-                              className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg transition-transform duration-200 ease-in-out"
+                              className={cn(
+                                "pointer-events-none block rounded-full bg-background shadow-lg ring-0",
+                                "toggle-thumb-mobile sm:relative sm:h-5 sm:w-5 sm:top-auto sm:left-auto sm:transition-transform sm:duration-200 sm:ease-in-out",
+                                botAutoRebalance 
+                                  ? "sm:translate-x-5" 
+                                  : "sm:translate-x-0"
+                              )}
                               data-state={
                                 botAutoRebalance ? "checked" : "unchecked"
                               }
@@ -1860,17 +1966,27 @@ export default function Dashboard() {
                             <Label htmlFor="dca-enabled" className="text-xs">
                               DCA Enabled
                             </Label>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-xs sm:text-[10px] text-muted-foreground">
                               Dollar-cost averaging
                             </span>
                           </div>
                           <div
-                            className="relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out"
+                            className={cn(
+                              "relative cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out",
+                              "toggle-switch-mobile sm:inline-flex sm:h-[24px] sm:w-[44px] sm:shrink-0",
+                              botDCAEnabled ? "bg-primary" : "bg-input"
+                            )}
                             data-state={botDCAEnabled ? "checked" : "unchecked"}
                             onClick={() => setBotDCAEnabled((prev) => !prev)}
                           >
                             <span
-                              className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg transition-transform duration-200 ease-in-out"
+                              className={cn(
+                                "pointer-events-none block rounded-full bg-background shadow-lg ring-0",
+                                "toggle-thumb-mobile sm:relative sm:h-5 sm:w-5 sm:top-auto sm:left-auto sm:transition-transform sm:duration-200 sm:ease-in-out",
+                                botDCAEnabled 
+                                  ? "sm:translate-x-5" 
+                                  : "sm:translate-x-0"
+                              )}
                               data-state={
                                 botDCAEnabled ? "checked" : "unchecked"
                               }
@@ -1880,7 +1996,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   )}
-                  <div className="pt-3">
+                  <div className="pt-4 sm:pt-3">
                     <Button
                       variant={botActive ? "destructive" : "default"}
                       size="sm"
