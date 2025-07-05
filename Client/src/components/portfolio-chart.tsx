@@ -15,7 +15,11 @@ interface PortfolioChartProps {
   isMobile?: boolean;
 }
 
-export function PortfolioChart({ data, timeframe, isMobile = false }: PortfolioChartProps) {
+export function PortfolioChart({
+  data,
+  timeframe,
+  isMobile = false,
+}: PortfolioChartProps) {
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -135,11 +139,11 @@ export function PortfolioChart({ data, timeframe, isMobile = false }: PortfolioC
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={formatData}
-          margin={{ 
-            top: 10, 
-            right: isMobile ? 0 : 5, 
-            left: isMobile ? -15 : -10, 
-            bottom: 0 
+          margin={{
+            top: 10,
+            right: isMobile ? 0 : 5,
+            left: isMobile ? -15 : -10,
+            bottom: 0,
           }}
         >
           <defs>
@@ -157,7 +161,11 @@ export function PortfolioChart({ data, timeframe, isMobile = false }: PortfolioC
             axisLine={false}
           />
           <YAxis
-            tickFormatter={(value) => isMobile ? `$${(value/1000).toFixed(0)}k` : `$${value.toLocaleString()}`}
+            tickFormatter={(value) =>
+              isMobile
+                ? `$${(value / 1000).toFixed(0)}k`
+                : `$${value.toLocaleString()}`
+            }
             tick={{ fontSize: isMobile ? 10 : 12 }}
             tickLine={false}
             axisLine={false}

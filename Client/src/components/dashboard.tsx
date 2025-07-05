@@ -1951,8 +1951,8 @@ export default function Dashboard() {
                               className={cn(
                                 "pointer-events-none block rounded-full bg-background shadow-lg ring-0",
                                 "toggle-thumb-mobile sm:relative sm:h-5 sm:w-5 sm:top-auto sm:left-auto sm:transition-transform sm:duration-200 sm:ease-in-out",
-                                botAutoRebalance 
-                                  ? "sm:translate-x-5" 
+                                botAutoRebalance
+                                  ? "sm:translate-x-5"
                                   : "sm:translate-x-0"
                               )}
                               data-state={
@@ -1983,8 +1983,8 @@ export default function Dashboard() {
                               className={cn(
                                 "pointer-events-none block rounded-full bg-background shadow-lg ring-0",
                                 "toggle-thumb-mobile sm:relative sm:h-5 sm:w-5 sm:top-auto sm:left-auto sm:transition-transform sm:duration-200 sm:ease-in-out",
-                                botDCAEnabled 
-                                  ? "sm:translate-x-5" 
+                                botDCAEnabled
+                                  ? "sm:translate-x-5"
                                   : "sm:translate-x-0"
                               )}
                               data-state={
