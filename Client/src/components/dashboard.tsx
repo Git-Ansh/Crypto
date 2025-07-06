@@ -290,6 +290,17 @@ export default function Dashboard() {
   const [positionsLoading, setPositionsLoading] = useState<boolean>(true);
   const [botActive, setBotActive] = useState<boolean>(true);
   const [botStrategy, setBotStrategy] = useState<string>("Aggressive Growth");
+  
+  // Bot names state
+  const [selectedBot, setSelectedBot] = useState<string>("Trading Bot Alpha");
+  const [botNames] = useState<string[]>([
+    "Trading Bot Alpha",
+    "DCA Bot Beta", 
+    "Scalping Bot Gamma",
+    "Hodl Bot Delta",
+    "Momentum Bot Echo"
+  ]);
+  
   const [paperBalance, setPaperBalance] = useState<number>(0);
   const [tradesLoading, setTradesLoading] = useState<boolean>(true);
   const [botConfigLoading, setBotConfigLoading] = useState<boolean>(true);
@@ -1368,6 +1379,38 @@ export default function Dashboard() {
               margin-bottom: 12px !important;
             }
             
+            /* Fix mobile dropdown touch issues */
+            .mobile-dropdown-fix,
+            .mobile-dropdown-fix * {
+              -webkit-touch-callout: none !important;
+              -webkit-user-select: none !important;
+              -khtml-user-select: none !important;
+              -moz-user-select: none !important;
+              -ms-user-select: none !important;
+              user-select: none !important;
+              touch-action: manipulation !important;
+            }
+            
+            /* Ensure dropdown buttons work properly on mobile */
+            .mobile-dropdown-trigger {
+              touch-action: manipulation !important;
+              -webkit-tap-highlight-color: transparent !important;
+              cursor: pointer !important;
+            }
+            
+            /* Dropdown content positioning fixes for mobile */
+            .mobile-dropdown-content {
+              position: absolute !important;
+              z-index: 1000 !important;
+              touch-action: manipulation !important;
+            }
+            
+            /* Prevent iOS zoom on dropdown interaction */
+            .mobile-dropdown-trigger:focus {
+              outline: none !important;
+              -webkit-tap-highlight-color: transparent !important;
+            }
+            
             /* Floating header tray styles for mobile - macOS dock style */
             .mobile-floating-header {
               position: fixed !important;
@@ -2108,6 +2151,39 @@ export default function Dashboard() {
               <CardContent className="p-3 sm:p-4">
                 {/* Mobile-first layout with forced CSS classes */}
                 <div className="space-y-4 sm:space-y-3">
+                  <div className="bot-section-spacing mobile-dropdown-fix">
+                    <Label
+                      htmlFor="bot-select"
+                      className="text-sm font-medium"
+                    >
+                      Bot Name
+                    </Label>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          id="bot-select"
+                          variant="outline"
+                          className="mt-1 w-full flex justify-between items-center h-9 sm:h-auto mobile-dropdown-trigger"
+                        >
+                          {selectedBot || "Select bot"}
+                          <ChevronDown className="h-4 w-4 opacity-50" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="start"
+                        className="w-[280px] sm:w-[500px] h-auto mobile-dropdown-content"
+                      >
+                        {botNames.map((botName) => (
+                          <DropdownMenuItem
+                            key={botName}
+                            onClick={() => setSelectedBot(botName)}
+                          >
+                            {botName}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                   <div className="flex items-center gap-3 bot-section-spacing">
                     <div
                       className={cn(
@@ -2126,7 +2202,7 @@ export default function Dashboard() {
                       </span>
                     </p>
                   </div>
-                  <div className="bot-section-spacing">
+                  <div className="bot-section-spacing mobile-dropdown-fix">
                     <Label
                       htmlFor="strategy-select"
                       className="text-sm font-medium"
@@ -2138,7 +2214,7 @@ export default function Dashboard() {
                         <Button
                           id="strategy-select"
                           variant="outline"
-                          className="mt-1 w-full flex justify-between items-center h-9 sm:h-auto"
+                          className="mt-1 w-full flex justify-between items-center h-9 sm:h-auto mobile-dropdown-trigger"
                         >
                           {botStrategy || "Select strategy"}
                           <ChevronDown className="h-4 w-4 opacity-50" />
@@ -2146,7 +2222,7 @@ export default function Dashboard() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="start"
-                        className="w-[280px] sm:w-[500px] h-auto"
+                        className="w-[280px] sm:w-[500px] h-auto mobile-dropdown-content"
                       >
                         <DropdownMenuItem
                           onClick={() => setBotStrategy("Aggressive Growth")}
