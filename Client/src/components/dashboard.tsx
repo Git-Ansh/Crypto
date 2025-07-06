@@ -2067,45 +2067,6 @@ export default function Dashboard() {
                         : `Welcome back, ${user?.name || "Trader"}!`}
                     </p>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-[100px] flex justify-between items-center"
-                      >
-                        {portfolioDateRange}
-                        <ChevronDown className="h-4 w-4 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("24h")}
-                      >
-                        24h
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("1w")}
-                      >
-                        1 Week
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("1m")}
-                      >
-                        1 Month
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("1y")}
-                      >
-                        1 Year
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setPortfolioDateRange("all")}
-                      >
-                        All Time
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </div>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
@@ -2217,6 +2178,79 @@ export default function Dashboard() {
 
                     {/* Portfolio Value Chart - Mobile: Larger, Desktop: Same */}
                     <div className="border-t pt-2 -mx-3 sm:-mx-4 px-2 sm:px-3">
+                      {/* Time frame dropdown above the chart */}
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="text-sm font-medium text-muted-foreground">
+                          Portfolio Value
+                        </h4>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={cn(
+                                "h-8 flex justify-center items-center",
+                                isMobile
+                                  ? "w-[40px] text-sm px-1 min-w-0 bg-background text-white dark:text-black"
+                                  : "w-auto px-3"
+                              )}
+                            >
+                              <span
+                                className={
+                                  isMobile
+                                    ? "text-sm font-bold text-white dark:text-black"
+                                    : ""
+                                }
+                              >
+                                {isMobile
+                                  ? portfolioDateRange === "24h"
+                                    ? "24h"
+                                    : portfolioDateRange === "1w"
+                                    ? "1w"
+                                    : portfolioDateRange === "1m"
+                                    ? "1m"
+                                    : portfolioDateRange === "1y"
+                                    ? "1y"
+                                    : "all"
+                                  : portfolioDateRange}
+                              </span>
+                              <ChevronDown
+                                className={cn(
+                                  "opacity-50 flex-shrink-0",
+                                  isMobile ? "h-3 w-3 ml-1" : "h-4 w-4 ml-2"
+                                )}
+                              />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem
+                              onClick={() => setPortfolioDateRange("24h")}
+                            >
+                              24h
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setPortfolioDateRange("1w")}
+                            >
+                              1 Week
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setPortfolioDateRange("1m")}
+                            >
+                              1 Month
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setPortfolioDateRange("1y")}
+                            >
+                              1 Year
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setPortfolioDateRange("all")}
+                            >
+                              All Time
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                       <div className="w-full h-60 sm:h-62 overflow-hidden rounded-md">
                         {portfolioChartLoading ? (
                           <InlineLoading
