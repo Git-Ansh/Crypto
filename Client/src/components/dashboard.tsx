@@ -290,17 +290,17 @@ export default function Dashboard() {
   const [positionsLoading, setPositionsLoading] = useState<boolean>(true);
   const [botActive, setBotActive] = useState<boolean>(true);
   const [botStrategy, setBotStrategy] = useState<string>("Aggressive Growth");
-  
+
   // Bot names state
   const [selectedBot, setSelectedBot] = useState<string>("Trading Bot Alpha");
   const [botNames] = useState<string[]>([
     "Trading Bot Alpha",
-    "DCA Bot Beta", 
+    "DCA Bot Beta",
     "Scalping Bot Gamma",
     "Hodl Bot Delta",
-    "Momentum Bot Echo"
+    "Momentum Bot Echo",
   ]);
-  
+
   const [paperBalance, setPaperBalance] = useState<number>(0);
   const [tradesLoading, setTradesLoading] = useState<boolean>(true);
   const [botConfigLoading, setBotConfigLoading] = useState<boolean>(true);
@@ -1444,25 +1444,35 @@ export default function Dashboard() {
               width: 100% !important;
               max-width: 100% !important;
               min-height: 40px !important;
-              overflow: visible !important;
-              gap: 6px !important;
+              height: 40px !important;
+              overflow: hidden !important;
+              gap: 4px !important;
               justify-content: space-between !important;
-              padding: 0 2px !important;
+              padding: 0 !important;
             }
             
-            /* Compact button styles for mobile tray */
-            
+            /* Compact button styles for mobile tray - equal distribution */
             .mobile-tray-icon-button {
               height: 36px !important;
               width: 36px !important;
               min-height: 36px !important;
               min-width: 36px !important;
+              max-height: 36px !important;
+              max-width: 36px !important;
               padding: 0 !important;
               border-radius: 10px !important;
               flex-shrink: 0 !important;
               display: flex !important;
               align-items: center !important;
               justify-content: center !important;
+            }
+            
+            /* Icon sizes within buttons - fixed size */
+            .mobile-tray-icon-button .lucide-icon,
+            .mobile-tray-icon-button svg {
+              width: 16px !important;
+              height: 16px !important;
+              flex-shrink: 0 !important;
             }
             
             .mobile-connection-indicator {
@@ -1475,31 +1485,29 @@ export default function Dashboard() {
               display: flex !important;
               align-items: center !important;
               gap: 0 !important;
-              flex-shrink: 0 !important;
+              flex: 1 !important;
               min-width: 0 !important;
-              overflow: visible !important;
+              overflow: hidden !important;
               height: 36px !important;
-              flex-basis: auto !important;
-              max-width: 130px !important;
-              margin-right: 2px !important;
+              margin: 0 !important;
             }
             
             .mobile-last-updated-combined {
               height: 36px !important;
               min-height: 36px !important;
+              max-height: 36px !important;
               padding: 0 12px !important;
-              font-size: 11px !important;
-              line-height: 1.2 !important;
+              font-size: 10px !important;
+              line-height: 1.1 !important;
               border-radius: 10px !important;
               white-space: nowrap !important;
-              overflow: visible !important;
-              text-overflow: clip !important;
-              flex-shrink: 0 !important;
+              overflow: hidden !important;
+              text-overflow: ellipsis !important;
+              flex: 1 !important;
               display: flex !important;
               flex-direction: column !important;
               align-items: center !important;
               justify-content: center !important;
-              min-width: 120px !important;
               width: 100% !important;
               color: white !important;
               background-color: rgba(0, 0, 0, 0.9) !important;
@@ -1565,7 +1573,7 @@ export default function Dashboard() {
             }
             
             .mobile-last-updated-text {
-              font-size: 8px !important;
+              font-size: 7px !important;
               line-height: 1 !important;
               opacity: 0.8 !important;
               margin: 0 !important;
@@ -1581,7 +1589,7 @@ export default function Dashboard() {
             }
             
             .mobile-last-updated-time {
-              font-size: 11px !important;
+              font-size: 9px !important;
               line-height: 1 !important;
               font-weight: 600 !important;
               margin: 0 !important;
@@ -1599,37 +1607,100 @@ export default function Dashboard() {
               display: flex !important;
               align-items: center !important;
               justify-content: center !important;
-              flex: 1 !important;
-              min-width: 20px !important;
-              max-width: 40px !important;
-              margin: 0 4px !important;
-            }
-            
-            /* Right side button group for better spacing */
-            .mobile-right-buttons {
-              display: flex !important;
-              align-items: center !important;
-              gap: 4px !important;
               flex-shrink: 0 !important;
-              margin-left: 2px !important;
+              min-width: 12px !important;
+              width: 12px !important;
+              height: 12px !important;
+              margin: 0 !important;
             }
             
-            /* Adjust main content padding for mobile floating header */
+            /* Remove unused right buttons wrapper since we're using individual flex items */
+            
+            /* Adjust main content padding for mobile floating header - match tray width */
             .mobile-content-wrapper {
               padding-top: 56px !important;
+              padding-left: 0 !important;
+              padding-right: 0 !important;
+              padding-bottom: 16px !important;
+              margin: 0 !important;
+              width: 100vw !important;
+              max-width: 100vw !important;
+              box-sizing: border-box !important;
             }
             
-            /* Restore mobile title positioning below tray */
+            /* Mobile title section - match tray width exactly */
             .mobile-title-section {
+              position: relative !important;
+              left: 8px !important;
+              right: 8px !important;
               padding: 12px 0 8px 0 !important;
               margin-bottom: 16px !important;
+              margin-left: 0 !important;
+              margin-right: 0 !important;
+              width: calc(100% - 16px) !important;
+              max-width: calc(100vw - 16px) !important;
+              box-sizing: border-box !important;
             }
             
             .mobile-title-section h1 {
               font-size: 24px !important;
               font-weight: 700 !important;
               text-align: left !important;
-              padding-left: 40px !important;
+              padding-left: 0 !important;
+              margin: 0 !important;
+            }
+            
+            /* Ensure all mobile content respects boundaries */
+            .mobile-content-container {
+              width: 100% !important;
+              max-width: 100% !important;
+              overflow-x: hidden !important;
+              box-sizing: border-box !important;
+            }
+            
+            /* Mobile footer specific styling */
+            .mobile-footer {
+              position: relative !important;
+              left: 8px !important;
+              right: 8px !important;
+              margin-left: 0 !important;
+              margin-right: 0 !important;
+              width: calc(100% - 16px) !important;
+              max-width: calc(100vw - 16px) !important;
+              box-sizing: border-box !important;
+              padding-left: 0 !important;
+              padding-right: 0 !important;
+            }
+            
+            /* Mobile section padding to match header tray */
+            .mobile-section-padding {
+              position: relative !important;
+              left: 8px !important;
+              right: 8px !important;
+              margin-left: 0 !important;
+              margin-right: 0 !important;
+              width: calc(100% - 10px) !important;
+              max-width: calc(100vw - 10px) !important;
+              box-sizing: border-box !important;
+              padding-left: 0 !important;
+              padding-right: 0 !important;
+            }
+            
+            /* Remove problematic responsive overrides */
+            .mobile-grid-responsive {
+              /* Use default gap spacing */
+            }
+            
+            .mobile-card-responsive {
+              /* Use default card styling */
+            }
+            
+            .mobile-text-responsive {
+              /* Use default text sizing */
+            }
+            
+            .mobile-title-responsive {
+              /* Use default title sizing */
             }
           }
             
@@ -1697,8 +1768,10 @@ export default function Dashboard() {
         )}
         <div
           className={cn(
-            "w-full p-2 sm:p-4 overflow-hidden no-scrollbar sidebar-responsive-content",
-            isMobile && "mobile-content-wrapper"
+            "w-full overflow-hidden no-scrollbar sidebar-responsive-content",
+            isMobile
+              ? "mobile-content-wrapper mobile-content-container"
+              : "p-2 sm:p-4"
           )}
           style={{ maxWidth: "100%" }}
         >
@@ -1706,10 +1779,18 @@ export default function Dashboard() {
           {isMobile && (
             <div className="mobile-floating-header">
               <div className="mobile-header-content">
-                {/* 1. Sidebar Toggle Button */}
-                <SidebarTrigger className="mobile-tray-icon-button bg-transparent border-black/20 dark:border-white/20 text-black/90 dark:text-white/90 hover:bg-black/10 dark:hover:bg-white/10" />
+                {/* 1. Sidebar Toggle Button - First element */}
+                <div
+                  style={{
+                    flex: "0 0 36px",
+                    display: "flex",
+                    justifyContent: "center",
+                  }}
+                >
+                  <SidebarTrigger className="mobile-tray-icon-button bg-transparent border-black/20 dark:border-white/20 text-black/90 dark:text-white/90 hover:bg-black/10 dark:hover:bg-white/10" />
+                </div>
 
-                {/* 2. "LAST UPDATED" combined label with timestamp */}
+                {/* 2. "LAST UPDATED" section - Takes remaining space */}
                 <div className="group relative mobile-last-updated-section">
                   <div
                     className="mobile-last-updated-combined"
@@ -1717,22 +1798,25 @@ export default function Dashboard() {
                       color: "white !important",
                       backgroundColor: "rgba(0, 0, 0, 0.9) !important",
                       borderColor: "rgba(0, 0, 0, 0.3) !important",
-                      minWidth: "130px",
                       border: "1px solid rgba(0, 0, 0, 0.3)",
                       borderRadius: "10px",
-                      padding: "0 16px",
+                      padding: "0 12px",
                       height: "36px",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
+                      flex: "1",
+                      width: "100%",
+                      maxWidth: "100%",
+                      overflow: "hidden",
                     }}
                   >
                     <div
                       className="mobile-last-updated-text"
                       style={{
                         color: "rgb(255, 255, 255) !important",
-                        fontSize: "8px !important",
+                        fontSize: "7px !important",
                         lineHeight: "1 !important",
                         textTransform: "uppercase",
                         opacity: "0.8 !important",
@@ -1744,7 +1828,7 @@ export default function Dashboard() {
                       className="mobile-last-updated-time"
                       style={{
                         color: "rgb(255, 255, 255) !important",
-                        fontSize: "11px !important",
+                        fontSize: "9px !important",
                         fontWeight: "600 !important",
                         lineHeight: "1 !important",
                         textShadow: "none !important",
@@ -1778,57 +1862,70 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* 3. Connection Indicator - Centered in remaining space */}
-                <div className="mobile-connection-wrapper">
-                  <div className="group relative">
-                    <span
-                      className={cn(
-                        "mobile-connection-indicator inline-block rounded-full transition-all duration-300 cursor-help shadow-lg",
-                        wsConnected
-                          ? "bg-green-500 shadow-green-500/50"
-                          : connectionStatus === "connecting"
-                          ? "bg-yellow-500 shadow-yellow-500/50 animate-pulse"
-                          : "bg-red-500 shadow-red-500/50 animate-ping"
-                      )}
-                      style={
-                        connectionStatus === "connecting"
-                          ? {
-                              animationDuration: "2s",
-                            }
-                          : {}
-                      }
-                      title={
-                        wsConnected
-                          ? "Real-time data connected"
-                          : connectionStatus === "connecting"
-                          ? "Connecting to real-time data..."
-                          : "Connection lost - data may be outdated"
-                      }
-                    />
-                    {/* Tooltip */}
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-black/80 text-white text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border border-white/20">
-                      <div className="font-medium">
-                        {wsConnected
-                          ? "Connected"
-                          : connectionStatus === "connecting"
-                          ? "Connecting..."
-                          : "Disconnected"}
+                {/* 3. Connection Indicator - Center element */}
+                <div
+                  style={{
+                    flex: "0 0 36px",
+                    display: "flex",
+                    justifyContent: "center",
+                  }}
+                >
+                  <div className="mobile-connection-wrapper">
+                    <div className="group relative">
+                      <span
+                        className={cn(
+                          "mobile-connection-indicator inline-block rounded-full transition-all duration-300 cursor-help shadow-lg",
+                          wsConnected
+                            ? "bg-green-500 shadow-green-500/50"
+                            : connectionStatus === "connecting"
+                            ? "bg-yellow-500 shadow-yellow-500/50 animate-pulse"
+                            : "bg-red-500 shadow-red-500/50 animate-ping"
+                        )}
+                        style={
+                          connectionStatus === "connecting"
+                            ? {
+                                animationDuration: "2s",
+                              }
+                            : {}
+                        }
+                        title={
+                          wsConnected
+                            ? "Real-time data connected"
+                            : connectionStatus === "connecting"
+                            ? "Connecting to real-time data..."
+                            : "Connection lost - data may be outdated"
+                        }
+                      />
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-black/80 text-white text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border border-white/20">
+                        <div className="font-medium">
+                          {wsConnected
+                            ? "Connected"
+                            : connectionStatus === "connecting"
+                            ? "Connecting..."
+                            : "Disconnected"}
+                        </div>
+                        <div className="text-white/70">
+                          {wsConnected
+                            ? "Real-time market data active"
+                            : connectionStatus === "connecting"
+                            ? "Establishing connection..."
+                            : "Attempting to reconnect..."}
+                        </div>
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black/80"></div>
                       </div>
-                      <div className="text-white/70">
-                        {wsConnected
-                          ? "Real-time market data active"
-                          : connectionStatus === "connecting"
-                          ? "Establishing connection..."
-                          : "Attempting to reconnect..."}
-                      </div>
-                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black/80"></div>
                     </div>
                   </div>
                 </div>
 
-                {/* 4. & 5. Right Side Buttons */}
-                <div className="mobile-right-buttons">
-                  {/* 4. Refresh Button */}
+                {/* 4. Refresh Button - Individual element */}
+                <div
+                  style={{
+                    flex: "0 0 36px",
+                    display: "flex",
+                    justifyContent: "center",
+                  }}
+                >
                   <Button
                     variant="outline"
                     size="sm"
@@ -1838,8 +1935,16 @@ export default function Dashboard() {
                   >
                     <RefreshCw className="h-4 w-4" />
                   </Button>
+                </div>
 
-                  {/* 5. Mode Toggle */}
+                {/* 5. Mode Toggle - Individual element */}
+                <div
+                  style={{
+                    flex: "0 0 36px",
+                    display: "flex",
+                    justifyContent: "center",
+                  }}
+                >
                   <ModeToggle className="mobile-tray-icon-button bg-transparent border-black/20 dark:border-white/20 text-black/90 dark:text-white/90 hover:bg-black/10 dark:hover:bg-white/10" />
                 </div>
               </div>
@@ -1930,14 +2035,24 @@ export default function Dashboard() {
             </div>
           </div>
           {error && (
-            <Card className="mb-4 sm:mb-6 border-red-500">
+            <Card
+              className={cn(
+                "mb-4 sm:mb-6 border-red-500",
+                isMobile && "mobile-section-padding"
+              )}
+            >
               <CardContent className="p-2 sm:p-4 text-red-500 text-sm">
                 {error}
               </CardContent>
             </Card>
           )}
           {/* Row 1: Portfolio & Bot */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+          <div
+            className={cn(
+              "grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6",
+              isMobile && "mobile-section-padding"
+            )}
+          >
             {/* Consolidated Portfolio Overview & Value Chart */}
             <Card className="lg:col-span-1">
               <CardHeader className="p-3 sm:p-4 pb-0">
@@ -2152,10 +2267,7 @@ export default function Dashboard() {
                 {/* Mobile-first layout with forced CSS classes */}
                 <div className="space-y-4 sm:space-y-3">
                   <div className="bot-section-spacing mobile-dropdown-fix">
-                    <Label
-                      htmlFor="bot-select"
-                      className="text-sm font-medium"
-                    >
+                    <Label htmlFor="bot-select" className="text-sm font-medium">
                       Bot Name
                     </Label>
                     <DropdownMenu>
@@ -2400,7 +2512,12 @@ export default function Dashboard() {
             </Card>
           </div>
           {/* Row 2: Ticker/Chart & Top Crypto */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+          <div
+            className={cn(
+              "grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4",
+              isMobile && "mobile-section-padding"
+            )}
+          >
             {/* Main chart side */}
             <div className="lg:col-span-2">
               {chartData.length > 0 && (
@@ -2765,7 +2882,12 @@ export default function Dashboard() {
             </div>
           </div>
           {/* Row 3: Quick Trade, Recent Trades, Bot Roadmap, News/Tips */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-4">
+          <div
+            className={cn(
+              "grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-4",
+              isMobile && "mobile-section-padding"
+            )}
+          >
             {/* LEFT COLUMN: Quick Trade + Roadmap */}
             <div className="flex flex-col gap-4">
               <Card>
@@ -2961,7 +3083,12 @@ export default function Dashboard() {
           </div>
         </div>
         {/* Footer / Disclaimer */}
-        <div className="mt-6 text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "mt-6 text-xs text-muted-foreground",
+            isMobile && "mobile-footer"
+          )}
+        >
           <p>
             Disclaimer: This is a paper-trading bot dashboard for demonstration
             only. It does not constitute financial advice. Always do your own
