@@ -1293,10 +1293,38 @@ export default function Dashboard() {
 
   // ============== Render ==============
   return (
-    <SidebarProvider defaultOpen={true}>
+    <SidebarProvider defaultOpen={!isMobile}>
       <AppSidebar />
       <SidebarInset>
-        <SidebarRail className="absolute top-4.5 left-4" />
+        {!isMobile && <SidebarRail className="absolute top-4.5 left-4" />}
+        {/* Hide any default sidebar triggers on mobile except our custom one */}
+        <style>{`
+          @media (max-width: 640px) {
+            [data-sidebar="trigger"]:not(.mobile-tray-icon-button) {
+              display: none !important;
+            }
+            .sidebar-trigger:not(.mobile-tray-icon-button) {
+              display: none !important;
+            }
+            button[data-sidebar="trigger"]:not(.mobile-tray-icon-button) {
+              display: none !important;
+            }
+            [data-testid="sidebar-trigger"]:not(.mobile-tray-icon-button) {
+              display: none !important;
+            }
+            .sr-only:has([data-sidebar="trigger"]):not(.mobile-tray-icon-button) {
+              display: none !important;
+            }
+            /* Hide any button that might be positioned absolutely in top-left */
+            button[style*="position: absolute"][style*="top"][style*="left"]:not(.mobile-tray-icon-button) {
+              display: none !important;
+            }
+            /* Hide any element with fixed positioning that might be a sidebar trigger */
+            [style*="position: fixed"][style*="top: 0"][style*="left: 0"]:not(.mobile-tray-icon-button) {
+              display: none !important;
+            }
+          }
+        `}</style>
         <style>{`
           html, body {
             scrollbar-width: none;
