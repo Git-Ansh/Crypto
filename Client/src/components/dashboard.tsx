@@ -6,6 +6,9 @@ import {
   ArrowDown,
   Settings,
   AlertTriangle,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
@@ -57,6 +60,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { config } from "@/lib/config";
@@ -84,7 +88,7 @@ const MINUTE_DATA_ENDPOINT = "https://api.binance.com/api/v3/klines"; // for 1m 
 const TOP_CURRENCIES_ENDPOINT = "https://api.binance.com/api/v3/ticker/24hr"; // 24hr ticker for multiple symbols
 const WS_ENDPOINT = "wss://stream.binance.com:9443/ws";
 const COIN_GECKO_ENDPOINT =
-  "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,ripple,binancecoin,cardano,solana,dogecoin,polkadot,avalanche-2,matic-network,chainlink,shiba-inu&per_page=100";
+  "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false";
 
 // Define the symbols you want to track – note these are in the Binance pair format.
 const TOP_SYMBOLS = [
@@ -267,6 +271,15 @@ export default function Dashboard() {
   // Top currencies
   const [topCurrencies, setTopCurrencies] = useState<CurrencyData[]>([]);
   const [isLoadingCurrencies, setIsLoadingCurrencies] = useState<boolean>(true);
+
+  // Pagination and search for currencies
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [allCurrencies, setAllCurrencies] = useState<CurrencyData[]>([]);
+  const [displayedCurrencies, setDisplayedCurrencies] = useState<CurrencyData[]>([]);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(10);
+  const CURRENCIES_PER_PAGE_OPTIONS = [5, 10, 25, 50];
 
   // Selected currency
   const [selectedCurrency, setSelectedCurrency] = useState<string>("BTC");
@@ -528,62 +541,51 @@ export default function Dashboard() {
     });
   }
 
-  // ============== Top Currencies ==============
+  // ============== All Currencies with Pagination ==============
   const fetchTopCurrencies = useCallback(async () => {
     try {
       setIsLoadingCurrencies(true);
-      const binanceResp = await axios.get(TOP_CURRENCIES_ENDPOINT);
-      if (!binanceResp.data || !Array.isArray(binanceResp.data)) {
-        throw new Error("Invalid data format from Binance API");
-      }
+      
+      // Get data from CoinGecko which provides comprehensive market data
       const geckoResp = await axios.get(COIN_GECKO_ENDPOINT);
-      const supplyMap: Record<string, number> = {};
-      const idToSymbol: Record<string, string> = {
-        bitcoin: "BTC",
-        ethereum: "ETH",
-        ripple: "XRP",
-        binancecoin: "BNB",
-        cardano: "ADA",
-        solana: "SOL",
-        dogecoin: "DOGE",
-        polkadot: "DOT",
-        "avalanche-2": "AVAX",
-        "matic-network": "MATIC",
-        chainlink: "LINK",
-        "shiba-inu": "SHIB",
-      };
-      if (geckoResp.data && Array.isArray(geckoResp.data)) {
-        geckoResp.data.forEach((coin: any) => {
-          const symbol = idToSymbol[coin.id];
-          if (symbol) {
-            supplyMap[symbol] = coin.circulating_supply;
-          }
-        });
+      
+      if (!geckoResp.data || !Array.isArray(geckoResp.data)) {
+        throw new Error("Invalid data format from CoinGecko API");
       }
-      const topSymbols = TOP_SYMBOLS;
-      const currencies: CurrencyData[] = binanceResp.data
-        .filter((item: any) => topSymbols.includes(item.symbol))
-        .map((item: any) => {
-          const symbol = item.symbol.replace("USDT", "");
-          const circSupply = supplyMap[symbol] || 0;
-          return {
-            symbol,
-            name: symbol,
-            price: Number(item.lastPrice),
-            volume: Number(item.volume),
-            marketCap: Number(item.lastPrice) * circSupply,
-            change24h: Number(item.priceChangePercent),
-            lastUpdated: Date.now(),
-          };
-        });
-      const top10 = currencies
-        .sort((a, b) => b.marketCap - a.marketCap)
-        .slice(0, 10);
-      setTopCurrencies(top10);
+
+      // Transform CoinGecko data to our format
+      const currencies: CurrencyData[] = geckoResp.data.map((coin: any) => {
+        return {
+          symbol: coin.symbol.toUpperCase(),
+          name: coin.name,
+          price: coin.current_price || 0,
+          volume: coin.total_volume || 0,
+          marketCap: coin.market_cap || 0,
+          change24h: coin.price_change_percentage_24h || 0,
+          lastUpdated: Date.now(),
+        };
+      });
+
+      // Sort by market cap descending
+      const sortedCurrencies = currencies.sort((a, b) => b.marketCap - a.marketCap);
+      
+      // Store all currencies
+      setAllCurrencies(sortedCurrencies);
+      
+      // Set the first 10 for backward compatibility with topCurrencies
+      setTopCurrencies(sortedCurrencies.slice(0, 10));
+      
+      // Calculate total pages
+      const totalPagesCount = Math.ceil(sortedCurrencies.length / rowsPerPage);
+      setTotalPages(totalPagesCount);
+      
+      // Set initial displayed currencies (first page)
+      setDisplayedCurrencies(sortedCurrencies.slice(0, rowsPerPage));
+      
       setIsLoadingCurrencies(false);
       return true;
     } catch (err: any) {
-      console.error("Error fetching top currencies:", err);
+      console.error("Error fetching currencies:", err);
       setIsLoadingCurrencies(false);
       return false;
     }
@@ -792,10 +794,39 @@ export default function Dashboard() {
     };
   }, [processBatch]);
 
-  // Update the table of top currencies every second using the latestPricesRef
+  // Update the table of currencies every second using the latestPricesRef
   useEffect(() => {
     const intervalId = setInterval(() => {
+      // Update topCurrencies (for backward compatibility)
       setTopCurrencies((prev) =>
+        prev.map((currency) => {
+          const latest = latestPricesRef.current[currency.symbol];
+          return latest
+            ? {
+                ...currency,
+                price: latest.price,
+                lastUpdated: latest.lastUpdated,
+              }
+            : currency;
+        })
+      );
+
+      // Update allCurrencies
+      setAllCurrencies((prev) =>
+        prev.map((currency) => {
+          const latest = latestPricesRef.current[currency.symbol];
+          return latest
+            ? {
+                ...currency,
+                price: latest.price,
+                lastUpdated: latest.lastUpdated,
+              }
+            : currency;
+        })
+      );
+
+      // Update displayedCurrencies
+      setDisplayedCurrencies((prev) =>
         prev.map((currency) => {
           const latest = latestPricesRef.current[currency.symbol];
           return latest
@@ -1290,6 +1321,61 @@ export default function Dashboard() {
   useEffect(() => {
     generatePortfolioHistory(portfolioDateRange);
   }, [portfolioDateRange, generatePortfolioHistory]);
+
+  // ============== Pagination and Search Utilities ==============
+  const filterAndPaginateCurrencies = useCallback(() => {
+    let filtered = allCurrencies;
+    
+    // Apply search filter
+    if (searchTerm.trim()) {
+      filtered = allCurrencies.filter(
+        (currency) =>
+          currency.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          currency.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Calculate total pages for filtered results
+    const totalPagesCount = Math.ceil(filtered.length / rowsPerPage);
+    setTotalPages(totalPagesCount);
+    
+    // Reset to page 1 if current page exceeds total pages
+    const validPage = currentPage > totalPagesCount ? 1 : currentPage;
+    if (validPage !== currentPage) {
+      setCurrentPage(validPage);
+    }
+    
+    // Paginate
+    const startIndex = (validPage - 1) * rowsPerPage;
+    const endIndex = startIndex + rowsPerPage;
+    const paginatedCurrencies = filtered.slice(startIndex, endIndex);
+    
+    setDisplayedCurrencies(paginatedCurrencies);
+  }, [allCurrencies, searchTerm, currentPage, rowsPerPage]);
+  
+  // Handle rows per page change
+  const handleRowsPerPageChange = (value: string) => {
+    setRowsPerPage(parseInt(value));
+    setCurrentPage(1); // Reset to first page when changing rows per page
+  };
+  
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+  
+  // Handle search
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1); // Reset to first page on search
+  };
+  
+  // Effect to update displayed currencies when filters change
+  useEffect(() => {
+    if (allCurrencies.length > 0) {
+      filterAndPaginateCurrencies();
+    }
+  }, [filterAndPaginateCurrencies]);
 
   // ============== Render ==============
   return (
@@ -2583,8 +2669,8 @@ export default function Dashboard() {
             {/* Main chart side */}
             <div className="lg:col-span-2">
               {chartData.length > 0 && (
-                <Card className="mb-3 sm:mb-4">
-                  <CardHeader className="p-3 sm:p-4 pb-0">
+                <Card className="mb-3 sm:mb-4 h-[600px] flex flex-col">
+                  <CardHeader className="p-3 sm:p-4 pb-0 flex-shrink-0">
                     <div className="flex flex-col sm:flex-row justify-between gap-2 w-full">
                       <div className="flex flex-col gap-1">
                         <CardTitle className="text-base sm:text-lg">
@@ -2641,7 +2727,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-2 sm:p-4">
+                  <CardContent className="p-2 sm:p-4 flex-1 flex flex-col min-h-0">
                     <div
                       ref={chartContainerRef}
                       onMouseDown={handleMouseDown}
@@ -2651,9 +2737,9 @@ export default function Dashboard() {
                       onTouchStart={handleTouchStart}
                       onTouchMove={handleTouchMove}
                       onTouchEnd={handleTouchEnd}
+                      className="flex-1 min-h-0"
                       style={{
                         width: "100%",
-                        height: 250,
                         touchAction: "none",
                         cursor: panState.isPanning
                           ? "grabbing"
@@ -2664,7 +2750,7 @@ export default function Dashboard() {
                         overflow: "hidden",
                       }}
                     >
-                      <ResponsiveContainer width="100%" height={250}>
+                      <ResponsiveContainer width="100%" height="100%">
                         <LineChart
                           data={
                             zoomState.isZoomed && minuteData.length > 0
@@ -2834,7 +2920,7 @@ export default function Dashboard() {
                       </ResponsiveContainer>
                     </div>
                   </CardContent>
-                  <CardFooter className="border-t p-2 sm:p-4">
+                  <CardFooter className="border-t p-2 sm:p-4 flex-shrink-0">
                     <div className="w-full">
                       <p className="text-[10px] sm:text-xs text-muted-foreground mb-1 sm:mb-2">
                         Data from Binance & CoinGecko API; live updates from
@@ -2845,21 +2931,45 @@ export default function Dashboard() {
                 </Card>
               )}
             </div>
-            {/* Top Cryptocurrencies */}
+            {/* Cryptocurrencies with Search and Pagination */}
             <div className="lg:col-span-1 lg:col-start-3">
-              <Card className="h-full">
-                <CardHeader className="p-3 sm:p-4 pb-0">
-                  <CardTitle className="text-base sm:text-lg">
-                    Top 10 Cryptocurrencies
-                  </CardTitle>
+              <Card className="h-[600px] flex flex-col">
+                <CardHeader className="p-3 sm:p-4 pb-0 flex-shrink-0">
+                  <div className="flex flex-col gap-3">
+                    <CardTitle className="text-base sm:text-lg">
+                      Cryptocurrencies
+                    </CardTitle>
+                    {/* Search Bar */}
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder="Search currencies..."
+                        value={searchTerm}
+                        onChange={(e) => handleSearch(e.target.value)}
+                        className="text-xs h-8 pl-8"
+                      />
+                    </div>
+                    {/* Pagination Info */}
+                    <div className="flex justify-between items-center text-xs text-muted-foreground">
+                      <span>
+                        {searchTerm ? `${displayedCurrencies.length} results found` : `${allCurrencies.length} cryptocurrencies`}
+                      </span>
+                      {!searchTerm && (
+                        <span>
+                          Page {currentPage} of {totalPages}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-auto max-h-[450px] sm:max-h-[450px]">
+                <CardContent className="p-0 flex-1 flex flex-col min-h-0">
+                  <div className="overflow-auto flex-1 min-h-0">
                     <Table className="w-full">
                       <TableCaption className="text-[10px] sm:text-xs">
                         Updated in real-time via WebSocket
                       </TableCaption>
-                      <TableHeader>
+                      <TableHeader className="sticky top-0 bg-background z-10">
                         <TableRow>
                           <TableHead className="w-[60px] text-xs">
                             Symbol
@@ -2880,7 +2990,7 @@ export default function Dashboard() {
                           <TableRow>
                             <TableCell
                               colSpan={4}
-                              className="text-center text-xs"
+                              className="text-center text-xs h-[200px]"
                             >
                               <InlineLoading
                                 message="Loading market data..."
@@ -2888,8 +2998,17 @@ export default function Dashboard() {
                               />
                             </TableCell>
                           </TableRow>
+                        ) : displayedCurrencies.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              className="text-center text-xs h-[200px]"
+                            >
+                              {searchTerm ? "No currencies found" : "No data available"}
+                            </TableCell>
+                          </TableRow>
                         ) : (
-                          topCurrencies.map((currency) => (
+                          displayedCurrencies.map((currency) => (
                             <TableRow
                               key={currency.symbol}
                               className={cn(
@@ -2900,9 +3019,17 @@ export default function Dashboard() {
                               onClick={() =>
                                 handleCurrencySelect(currency.symbol)
                               }
+                              style={{
+                                height: `${Math.max(60, (400 - 60) / Math.max(1, rowsPerPage))}px`
+                              }}
                             >
                               <TableCell className="font-medium text-xs py-2">
-                                {currency.symbol}
+                                <div className="flex flex-col">
+                                  <span>{currency.symbol}</span>
+                                  <span className="text-[10px] text-muted-foreground truncate max-w-[50px]">
+                                    {currency.name}
+                                  </span>
+                                </div>
                               </TableCell>
                               <TableCell className="text-right text-xs py-2">
                                 {formatCurrency(currency.price)}
@@ -2936,10 +3063,102 @@ export default function Dashboard() {
                             </TableRow>
                           ))
                         )}
+                        {/* Fill remaining space when there are fewer rows than max */}
+                        {!isLoadingCurrencies && displayedCurrencies.length > 0 && displayedCurrencies.length < rowsPerPage && 
+                          [...Array(rowsPerPage - displayedCurrencies.length)].map((_, index) => (
+                            <TableRow key={`empty-${index}`} style={{
+                              height: `${Math.max(60, (400 - 60) / Math.max(1, rowsPerPage))}px`
+                            }}>
+                              <TableCell colSpan={4}></TableCell>
+                            </TableRow>
+                          ))
+                        }
                       </TableBody>
                     </Table>
                   </div>
                 </CardContent>
+                {/* Pagination Controls */}
+                <CardFooter className="p-3 sm:p-4 pt-0 flex-shrink-0">
+                  <div className="flex flex-col sm:flex-row justify-between items-center w-full gap-2">
+                    {/* Rows per page dropdown */}
+                    <div className="flex items-center gap-2 text-xs">
+                      <span>Rows per page:</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-8 w-12 p-0">
+                            {rowsPerPage}
+                            <ChevronDown className="h-3 w-3 ml-1" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          {CURRENCIES_PER_PAGE_OPTIONS.map((option) => (
+                            <DropdownMenuItem
+                              key={option}
+                              onClick={() => handleRowsPerPageChange(option.toString())}
+                            >
+                              {option}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    
+                    {/* Page info and navigation */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {searchTerm ? (
+                          `${Math.min((currentPage - 1) * rowsPerPage + 1, displayedCurrencies.length)}-${Math.min(currentPage * rowsPerPage, displayedCurrencies.length)} of ${displayedCurrencies.length} found`
+                        ) : (
+                          `${(currentPage - 1) * rowsPerPage + 1}-${Math.min(currentPage * rowsPerPage, allCurrencies.length)} of ${allCurrencies.length}`
+                        )}
+                      </span>
+                      
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(1)}
+                          disabled={currentPage === 1 || isLoadingCurrencies}
+                          className="h-8 w-8 p-0"
+                        >
+                          <ChevronLeft className="h-3 w-3" />
+                          <ChevronLeft className="h-3 w-3 -ml-1" />
+                        </Button>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          disabled={currentPage === 1 || isLoadingCurrencies}
+                          className="h-8 w-8 p-0"
+                        >
+                          <ChevronLeft className="h-3 w-3" />
+                        </Button>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          disabled={currentPage === totalPages || isLoadingCurrencies}
+                          className="h-8 w-8 p-0"
+                        >
+                          <ChevronRight className="h-3 w-3" />
+                        </Button>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(totalPages)}
+                          disabled={currentPage === totalPages || isLoadingCurrencies}
+                          className="h-8 w-8 p-0"
+                        >
+                          <ChevronRight className="h-3 w-3" />
+                          <ChevronRight className="h-3 w-3 -ml-1" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </CardFooter>
               </Card>
             </div>
           </div>
