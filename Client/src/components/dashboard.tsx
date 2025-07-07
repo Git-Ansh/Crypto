@@ -228,14 +228,6 @@ export default function Dashboard() {
 
   // Use a ref for the currently selected currency so that the WS handler always sees the latest value
   const selectedCurrencyRef = useRef<string>("BTC");
-  useEffect(
-    () => {
-      selectedCurrencyRef.current = selectedCurrency;
-    },
-    [
-      /* selectedCurrency will be defined below */
-    ]
-  );
 
   // Zoom/Pan states
   const [zoomState, setZoomState] = useState<{
@@ -280,6 +272,14 @@ export default function Dashboard() {
   const [selectedCurrency, setSelectedCurrency] = useState<string>("BTC");
   const [selectedCurrencyName, setSelectedCurrencyName] =
     useState<string>("Bitcoin");
+
+  // Update selectedCurrencyRef when selectedCurrency changes
+  useEffect(
+    () => {
+      selectedCurrencyRef.current = selectedCurrency;
+    },
+    [selectedCurrency]
+  );
 
   // --- New/Extended Feature States ---
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(
