@@ -58,6 +58,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -277,7 +284,14 @@ export default function Dashboard() {
   const [totalPages, setTotalPages] = useState<number>(1);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [allCurrencies, setAllCurrencies] = useState<CurrencyData[]>([]);
-  const [displayedCurrencies, setDisplayedCurrencies] = useState<CurrencyData[]>([]);
+  const [displayedCurrencies, setDisplayedCurrencies] = useState<
+    CurrencyData[]
+  >([]);
+  const [filteredCurrencies, setFilteredCurrencies] = useState<CurrencyData[]>(
+    []
+  );
+  const [startIndex, setStartIndex] = useState<number>(0);
+  const [endIndex, setEndIndex] = useState<number>(0);
   const [rowsPerPage, setRowsPerPage] = useState<number>(10);
   const CURRENCIES_PER_PAGE_OPTIONS = [5, 10, 25, 50];
 
@@ -287,12 +301,9 @@ export default function Dashboard() {
     useState<string>("Bitcoin");
 
   // Update selectedCurrencyRef when selectedCurrency changes
-  useEffect(
-    () => {
-      selectedCurrencyRef.current = selectedCurrency;
-    },
-    [selectedCurrency]
-  );
+  useEffect(() => {
+    selectedCurrencyRef.current = selectedCurrency;
+  }, [selectedCurrency]);
 
   // --- New/Extended Feature States ---
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(
@@ -545,10 +556,10 @@ export default function Dashboard() {
   const fetchTopCurrencies = useCallback(async () => {
     try {
       setIsLoadingCurrencies(true);
-      
+
       // Get data from CoinGecko which provides comprehensive market data
       const geckoResp = await axios.get(COIN_GECKO_ENDPOINT);
-      
+
       if (!geckoResp.data || !Array.isArray(geckoResp.data)) {
         throw new Error("Invalid data format from CoinGecko API");
       }
@@ -567,21 +578,23 @@ export default function Dashboard() {
       });
 
       // Sort by market cap descending
-      const sortedCurrencies = currencies.sort((a, b) => b.marketCap - a.marketCap);
-      
+      const sortedCurrencies = currencies.sort(
+        (a, b) => b.marketCap - a.marketCap
+      );
+
       // Store all currencies
       setAllCurrencies(sortedCurrencies);
-      
+
       // Set the first 10 for backward compatibility with topCurrencies
       setTopCurrencies(sortedCurrencies.slice(0, 10));
-      
+
       // Calculate total pages
       const totalPagesCount = Math.ceil(sortedCurrencies.length / rowsPerPage);
       setTotalPages(totalPagesCount);
-      
+
       // Set initial displayed currencies (first page)
       setDisplayedCurrencies(sortedCurrencies.slice(0, rowsPerPage));
-      
+
       setIsLoadingCurrencies(false);
       return true;
     } catch (err: any) {
@@ -1325,7 +1338,7 @@ export default function Dashboard() {
   // ============== Pagination and Search Utilities ==============
   const filterAndPaginateCurrencies = useCallback(() => {
     let filtered = allCurrencies;
-    
+
     // Apply search filter
     if (searchTerm.trim()) {
       filtered = allCurrencies.filter(
@@ -1334,42 +1347,45 @@ export default function Dashboard() {
           currency.name.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
-    
+
     // Calculate total pages for filtered results
     const totalPagesCount = Math.ceil(filtered.length / rowsPerPage);
     setTotalPages(totalPagesCount);
-    
+
     // Reset to page 1 if current page exceeds total pages
     const validPage = currentPage > totalPagesCount ? 1 : currentPage;
     if (validPage !== currentPage) {
       setCurrentPage(validPage);
     }
-    
+
     // Paginate
     const startIndex = (validPage - 1) * rowsPerPage;
     const endIndex = startIndex + rowsPerPage;
     const paginatedCurrencies = filtered.slice(startIndex, endIndex);
-    
+
     setDisplayedCurrencies(paginatedCurrencies);
+    setFilteredCurrencies(filtered);
+    setStartIndex(startIndex);
+    setEndIndex(endIndex);
   }, [allCurrencies, searchTerm, currentPage, rowsPerPage]);
-  
+
   // Handle rows per page change
   const handleRowsPerPageChange = (value: string) => {
     setRowsPerPage(parseInt(value));
     setCurrentPage(1); // Reset to first page when changing rows per page
   };
-  
+
   // Handle page change
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
-  
+
   // Handle search
   const handleSearch = (value: string) => {
     setSearchTerm(value);
     setCurrentPage(1); // Reset to first page on search
   };
-  
+
   // Effect to update displayed currencies when filters change
   useEffect(() => {
     if (allCurrencies.length > 0) {
@@ -1815,10 +1831,64 @@ export default function Dashboard() {
             
             .mobile-title-responsive {
               /* Use default title sizing */
+            }            /* Mobile pagination improvements for narrow screens */
+            .mobile-pagination-fix {
+              position: relative !important;
+              z-index: 1000 !important;
+            }
+            
+            /* Ensure select dropdowns work properly on mobile */
+            .mobile-select-dropdown {
+              position: fixed !important;
+              z-index: 9999 !important;
+              background: white !important;
+              border: 1px solid #e2e8f0 !important;
+              border-radius: 8px !important;
+              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+              max-height: 200px !important;
+              overflow-y: auto !important;
+              touch-action: manipulation !important;
+            }
+            
+            /* Dark mode select dropdown */
+            .dark .mobile-select-dropdown {
+              background: #1f2937 !important;
+              border-color: #374151 !important;
+            }
+            
+            /* Basic mobile table improvements */
+            @media (max-width: 640px) {
+              /* Ensure proper table display on mobile */
+              .crypto-table-mobile {
+                table-layout: fixed !important;
+                width: 100% !important;
+              }
+              
+              .crypto-table-mobile th,
+              .crypto-table-mobile td {
+                word-wrap: break-word !important;
+                overflow-wrap: break-word !important;
+              }
+              
+              /* Better search input on mobile */
+              .crypto-search-mobile {
+                font-size: 16px !important; /* Prevents zoom on iOS */
+                -webkit-appearance: none !important;
+              }
+              
+              /* Touch-friendly interactions */
+              .crypto-pagination-mobile button {
+                touch-action: manipulation !important;
+                -webkit-tap-highlight-color: transparent !important;
+              }
+              
+              .crypto-pagination-mobile [role="combobox"] {
+                touch-action: manipulation !important;
+              }
             }
           }
-            
-            /* Mobile-specific toggle switch fixes */
+          
+          /* Mobile-specific toggle switch fixes */
             .toggle-switch-mobile {
               width: 32px !important;
               height: 16px !important;
@@ -2011,7 +2081,7 @@ export default function Dashboard() {
                         }
                       />
                       {/* Tooltip */}
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-black/80 text-white text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border border-white/20">
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-black/80 text-white text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 border">
                         <div className="font-medium">
                           {wsConnected
                             ? "Connected"
@@ -2933,54 +3003,96 @@ export default function Dashboard() {
             </div>
             {/* Cryptocurrencies with Search and Pagination */}
             <div className="lg:col-span-1 lg:col-start-3">
-              <Card className="h-[600px] flex flex-col">
-                <CardHeader className="p-3 sm:p-4 pb-0 flex-shrink-0">
-                  <div className="flex flex-col gap-3">
-                    <CardTitle className="text-base sm:text-lg">
-                      Cryptocurrencies
-                    </CardTitle>
-                    {/* Search Bar */}
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                      <Input
-                        type="text"
-                        placeholder="Search currencies..."
-                        value={searchTerm}
-                        onChange={(e) => handleSearch(e.target.value)}
-                        className="text-xs h-8 pl-8"
-                      />
-                    </div>
-                    {/* Pagination Info */}
-                    <div className="flex justify-between items-center text-xs text-muted-foreground">
-                      <span>
-                        {searchTerm ? `${displayedCurrencies.length} results found` : `${allCurrencies.length} cryptocurrencies`}
-                      </span>
-                      {!searchTerm && (
-                        <span>
-                          Page {currentPage} of {totalPages}
-                        </span>
+              <Card
+                className={cn(
+                  "flex flex-col",
+                  isMobile ? "h-[550px]" : "h-[600px]"
+                )}
+              >
+                <CardHeader
+                  className={cn(
+                    "flex-shrink-0 border-b bg-card/50",
+                    isMobile ? "p-2 pb-2" : "p-4 pb-2"
+                  )}
+                >
+                  <CardTitle
+                    className={cn(
+                      "mb-2",
+                      isMobile
+                        ? "text-base font-semibold"
+                        : "text-base sm:text-lg"
+                    )}
+                  >
+                    Cryptocurrencies
+                  </CardTitle>
+                  {/* Mobile-optimized Search Bar */}
+                  <div className="relative">
+                    <Search
+                      className={cn(
+                        "absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground",
+                        isMobile ? "h-3 w-3" : "h-3 w-3"
                       )}
-                    </div>
+                    />
+                    <Input
+                      type="text"
+                      placeholder="Search currencies..."
+                      value={searchTerm}
+                      onChange={(e) => handleSearch(e.target.value)}
+                      className={cn(
+                        "border-2 focus:border-primary transition-colors",
+                        isMobile
+                          ? "h-9 text-sm pl-9 rounded-md"
+                          : "text-xs h-8 pl-8"
+                      )}
+                    />
                   </div>
                 </CardHeader>
-                <CardContent className="p-0 flex-1 flex flex-col min-h-0">
-                  <div className="overflow-auto flex-1 min-h-0">
+                <CardContent className="p-0 flex-1 flex flex-col min-h-0 overflow-hidden">
+                  {/* Mobile-optimized Table Container */}
+                  <div
+                    className={cn("flex-1 overflow-auto", isMobile && "px-2")}
+                  >
                     <Table className="w-full">
-                      <TableCaption className="text-[10px] sm:text-xs">
-                        Updated in real-time via WebSocket
-                      </TableCaption>
-                      <TableHeader className="sticky top-0 bg-background z-10">
-                        <TableRow>
-                          <TableHead className="w-[60px] text-xs">
+                      <TableHeader className="sticky top-0 bg-background/95 backdrop-blur-sm z-10 border-b">
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead
+                            className={cn(
+                              "font-semibold text-foreground",
+                              isMobile
+                                ? "text-xs py-2 px-2 w-[70px]"
+                                : "w-[60px] text-xs p-2"
+                            )}
+                          >
                             Symbol
                           </TableHead>
-                          <TableHead className="text-right text-xs">
+                          <TableHead
+                            className={cn(
+                              "text-right font-semibold text-foreground",
+                              isMobile
+                                ? "text-xs py-2 px-2"
+                                : "text-right text-xs p-2"
+                            )}
+                          >
                             Price
                           </TableHead>
-                          <TableHead className="text-right text-xs hidden sm:table-cell">
+                          <TableHead
+                            className={cn(
+                              "text-right font-semibold text-foreground hidden sm:table-cell",
+                              isMobile
+                                ? "text-xs py-2 px-2"
+                                : "text-right text-xs p-2"
+                            )}
+                          >
                             Market Cap
                           </TableHead>
-                          <TableHead className="text-right text-xs">
+                          <TableHead
+                            className={cn(
+                              "text-right font-semibold text-foreground",
+                              isMobile
+                                ? "text-xs py-2 px-2 w-[60px]"
+                                : "text-right text-xs p-2"
+                            )}
+                          >
                             24h
                           </TableHead>
                         </TableRow>
@@ -2989,8 +3101,11 @@ export default function Dashboard() {
                         {isLoadingCurrencies ? (
                           <TableRow>
                             <TableCell
-                              colSpan={4}
-                              className="text-center text-xs h-[200px]"
+                              colSpan={isMobile ? 3 : 4}
+                              className={cn(
+                                "text-center h-[200px]",
+                                isMobile ? "text-sm" : "text-center text-xs"
+                              )}
                             >
                               <InlineLoading
                                 message="Loading market data..."
@@ -3001,10 +3116,15 @@ export default function Dashboard() {
                         ) : displayedCurrencies.length === 0 ? (
                           <TableRow>
                             <TableCell
-                              colSpan={4}
-                              className="text-center text-xs h-[200px]"
+                              colSpan={isMobile ? 3 : 4}
+                              className={cn(
+                                "text-center h-[200px] text-muted-foreground",
+                                isMobile ? "text-sm" : "text-center text-xs"
+                              )}
                             >
-                              {searchTerm ? "No currencies found" : "No data available"}
+                              {searchTerm
+                                ? "No currencies found"
+                                : "No data available"}
                             </TableCell>
                           </TableRow>
                         ) : (
@@ -3012,37 +3132,103 @@ export default function Dashboard() {
                             <TableRow
                               key={currency.symbol}
                               className={cn(
-                                "cursor-pointer hover:bg-muted/50 transition-colors",
+                                "cursor-pointer hover:bg-muted/50 transition-colors border-b",
                                 selectedCurrency === currency.symbol &&
-                                  "bg-muted/30"
+                                  "bg-muted/30",
+                                isMobile ? "h-14" : "h-12 sm:h-auto"
                               )}
                               onClick={() =>
                                 handleCurrencySelect(currency.symbol)
                               }
-                              style={{
-                                height: `${Math.max(60, (400 - 60) / Math.max(1, rowsPerPage))}px`
-                              }}
                             >
-                              <TableCell className="font-medium text-xs py-2">
+                              <TableCell
+                                className={cn(
+                                  "font-medium",
+                                  isMobile
+                                    ? "py-2 px-2"
+                                    : "font-medium text-xs p-2"
+                                )}
+                              >
                                 <div className="flex flex-col">
-                                  <span>{currency.symbol}</span>
-                                  <span className="text-[10px] text-muted-foreground truncate max-w-[50px]">
+                                  <span
+                                    className={cn(
+                                      "font-semibold",
+                                      isMobile
+                                        ? "text-xs leading-tight"
+                                        : "text-xs"
+                                    )}
+                                  >
+                                    {currency.symbol}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "text-muted-foreground truncate leading-tight",
+                                      isMobile
+                                        ? "text-[10px] max-w-[55px]"
+                                        : "text-[10px] max-w-[50px]"
+                                    )}
+                                  >
                                     {currency.name}
                                   </span>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-right text-xs py-2">
-                                {formatCurrency(currency.price)}
+                              <TableCell
+                                className={cn(
+                                  "text-right",
+                                  isMobile
+                                    ? "py-2 px-2"
+                                    : "text-right text-xs p-2"
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "font-medium",
+                                    isMobile ? "text-xs" : ""
+                                  )}
+                                >
+                                  {formatCurrency(currency.price)}
+                                </span>
                               </TableCell>
-                              <TableCell className="text-right text-xs py-2 hidden sm:table-cell">
-                                {formatCurrency(currency.marketCap, true)}
+                              <TableCell
+                                className={cn(
+                                  "text-right hidden sm:table-cell",
+                                  isMobile
+                                    ? "py-2 px-2"
+                                    : "text-right text-xs p-2"
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "text-muted-foreground",
+                                    isMobile ? "text-xs" : ""
+                                  )}
+                                >
+                                  {formatCurrency(currency.marketCap, true)}
+                                </span>
                               </TableCell>
-                              <TableCell className="text-right text-xs py-2">
+                              <TableCell
+                                className={cn(
+                                  "text-right",
+                                  isMobile
+                                    ? "py-2 px-2"
+                                    : "text-right text-xs p-2"
+                                )}
+                              >
                                 <div className="flex items-center justify-end gap-1">
                                   {currency.change24h > 0 ? (
-                                    <ArrowUp className="h-3 w-3 text-green-500" />
+                                    <ArrowUp
+                                      className={cn(
+                                        "text-green-500",
+                                        isMobile ? "h-3 w-3" : "h-3 w-3"
+                                      )}
+                                    />
                                   ) : (
-                                    <ArrowDown className="h-3 w-3 text-red-400" />
+                                    <ArrowDown
+                                      className={cn(
+                                        "text-red-400",
+                                        isMobile ? "h-3 w-3" : "h-3 w-3"
+                                      )}
+                                    />
                                   )}
                                   <Badge
                                     variant={
@@ -3051,9 +3237,11 @@ export default function Dashboard() {
                                         : "destructive"
                                     }
                                     className={cn(
-                                      "text-[10px] px-1 py-0",
                                       currency.change24h < 0 &&
-                                        "bg-red-500/10 text-red-400 dark:text-red-400 dark:bg-red-500/20"
+                                        "bg-red-500/10 text-red-400 dark:text-red-400 dark:bg-red-500/20",
+                                      isMobile
+                                        ? "text-[9px] px-1 py-0"
+                                        : "text-[10px] px-1 py-0"
                                     )}
                                   >
                                     {Math.abs(currency.change24h).toFixed(1)}%
@@ -3063,98 +3251,163 @@ export default function Dashboard() {
                             </TableRow>
                           ))
                         )}
-                        {/* Fill remaining space when there are fewer rows than max */}
-                        {!isLoadingCurrencies && displayedCurrencies.length > 0 && displayedCurrencies.length < rowsPerPage && 
-                          [...Array(rowsPerPage - displayedCurrencies.length)].map((_, index) => (
-                            <TableRow key={`empty-${index}`} style={{
-                              height: `${Math.max(60, (400 - 60) / Math.max(1, rowsPerPage))}px`
-                            }}>
-                              <TableCell colSpan={4}></TableCell>
-                            </TableRow>
-                          ))
-                        }
                       </TableBody>
                     </Table>
                   </div>
                 </CardContent>
-                {/* Pagination Controls */}
-                <CardFooter className="p-3 sm:p-4 pt-0 flex-shrink-0">
-                  <div className="flex flex-col sm:flex-row justify-between items-center w-full gap-2">
-                    {/* Rows per page dropdown */}
-                    <div className="flex items-center gap-2 text-xs">
-                      <span>Rows per page:</span>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm" className="h-8 w-12 p-0">
-                            {rowsPerPage}
-                            <ChevronDown className="h-3 w-3 ml-1" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          {CURRENCIES_PER_PAGE_OPTIONS.map((option) => (
-                            <DropdownMenuItem
-                              key={option}
-                              onClick={() => handleRowsPerPageChange(option.toString())}
-                            >
-                              {option}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    
-                    {/* Page info and navigation */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        {searchTerm ? (
-                          `${Math.min((currentPage - 1) * rowsPerPage + 1, displayedCurrencies.length)}-${Math.min(currentPage * rowsPerPage, displayedCurrencies.length)} of ${displayedCurrencies.length} found`
-                        ) : (
-                          `${(currentPage - 1) * rowsPerPage + 1}-${Math.min(currentPage * rowsPerPage, allCurrencies.length)} of ${allCurrencies.length}`
-                        )}
-                      </span>
-                      
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePageChange(1)}
-                          disabled={currentPage === 1 || isLoadingCurrencies}
-                          className="h-8 w-8 p-0"
-                        >
-                          <ChevronLeft className="h-3 w-3" />
-                          <ChevronLeft className="h-3 w-3 -ml-1" />
-                        </Button>
-                        
+                {/* Responsive Pagination */}
+                <CardFooter
+                  className={cn(
+                    "flex-shrink-0 border-t bg-card/50",
+                    isMobile ? "p-2" : "p-3 sm:p-2"
+                  )}
+                >
+                  {/* Mobile Layout Only - Optimized for touch */}
+                  <div className="block sm:hidden w-full">
+                    <div className="space-y-2">
+                      {/* Top row: Navigation with compact spacing */}
+                      <div className="flex items-center justify-between w-full gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handlePageChange(currentPage - 1)}
-                          disabled={currentPage === 1 || isLoadingCurrencies}
-                          className="h-8 w-8 p-0"
+                          disabled={currentPage === 1}
+                          className="h-7 px-2 min-w-[50px] flex items-center gap-1 text-xs"
                         >
                           <ChevronLeft className="h-3 w-3" />
+                          <span>Prev</span>
                         </Button>
-                        
+
+                        <div className="flex items-center justify-center min-w-[40px] px-2 py-1 bg-muted/30 rounded text-xs font-semibold">
+                          {currentPage}/{totalPages}
+                        </div>
+
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handlePageChange(currentPage + 1)}
-                          disabled={currentPage === totalPages || isLoadingCurrencies}
-                          className="h-8 w-8 p-0"
+                          disabled={currentPage === totalPages}
+                          className="h-7 px-2 min-w-[50px] flex items-center gap-1 text-xs"
                         >
+                          <span>Next</span>
                           <ChevronRight className="h-3 w-3" />
                         </Button>
-                        
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePageChange(totalPages)}
-                          disabled={currentPage === totalPages || isLoadingCurrencies}
-                          className="h-8 w-8 p-0"
+                      </div>
+
+                      {/* Bottom row: Controls with compact spacing */}
+                      <div className="flex items-center justify-between w-full gap-2">
+                        <div className="flex items-center">
+                          <span
+                            className="text-xs text-foreground bg-muted/30 rounded px-2 py-1 min-w-[24px] text-center cursor-pointer hover:bg-muted/50 transition-colors border border-muted"
+                            onClick={() => {
+                              const options = [5, 10, 25, 50];
+                              const currentIndex = options.indexOf(rowsPerPage);
+                              const nextIndex =
+                                (currentIndex + 1) % options.length;
+                              handleRowsPerPageChange(
+                                options[nextIndex].toString()
+                              );
+                            }}
+                            title="Click to cycle through page sizes"
+                          >
+                            {rowsPerPage}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-muted-foreground text-right">
+                          <div className="leading-tight">
+                            {startIndex + 1}-
+                            {Math.min(endIndex, filteredCurrencies.length)}
+                          </div>
+                          <div className="text-[10px] leading-tight">
+                            of {filteredCurrencies.length}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Desktop Layout Only */}
+                  <div className="hidden sm:block w-full">
+                    <div className="flex items-center justify-between w-full">
+                      {/* Left: Rows per page */}
+                      <div className="flex items-center gap-2 text-sm">
+                        <span>Rows per page:</span>
+                        <Select
+                          value={rowsPerPage.toString()}
+                          onValueChange={handleRowsPerPageChange}
                         >
-                          <ChevronRight className="h-3 w-3" />
-                          <ChevronRight className="h-3 w-3 -ml-1" />
-                        </Button>
+                          <SelectTrigger className="h-8 w-20 px-3">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CURRENCIES_PER_PAGE_OPTIONS.map((option) => (
+                              <SelectItem
+                                key={option}
+                                value={option.toString()}
+                              >
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Right: Info and Navigation */}
+                      <div className="flex items-center gap-4">
+                        <span className="text-sm text-muted-foreground">
+                          {(currentPage - 1) * rowsPerPage + 1}-
+                          {Math.min(
+                            currentPage * rowsPerPage,
+                            allCurrencies.length
+                          )}{" "}
+                          of {allCurrencies.length}
+                        </span>
+
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(1)}
+                            disabled={currentPage === 1}
+                            className="h-8 w-8 p-0"
+                            title="First page"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            <ChevronLeft className="h-4 w-4 -ml-1" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="h-8 w-8 p-0"
+                            title="Previous page"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="h-8 w-8 p-0"
+                            title="Next page"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(totalPages)}
+                            disabled={currentPage === totalPages}
+                            className="h-8 w-8 p-0"
+                            title="Last page"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                            <ChevronRight className="h-4 w-4 -ml-1" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -1,11 +1,9 @@
 import { config } from './config';
 import axios, {
-  AxiosRequestConfig,
   InternalAxiosRequestConfig,
-  AxiosError,
   AxiosInstance // Add this import
 } from 'axios';
-import { refreshFirebaseToken, auth } from './auth';
+import { auth } from './auth';
 import { checkIsAuthenticated } from './auth-helper'; // Import the function from auth-helper
 
 const API_BASE_URL = config.api.baseUrl;
@@ -35,12 +33,34 @@ function setupTokenRefreshInterceptor(axiosInstance: AxiosInstance) {
       // Always prioritize getting a fresh Firebase token if available
       if (auth.currentUser) {
         try {
-          const token = await auth.currentUser.getIdToken(false);
-          config.headers.Authorization = `Bearer ${token}`;
-          console.log(`Request to ${config.url}: Using Firebase token`);
+          // Check if token needs refresh before using it
+          const currentToken = await auth.currentUser.getIdToken(false);
+          
+          // Decode the token to check expiry
+          try {
+            const payload = JSON.parse(atob(currentToken.split('.')[1]));
+            const currentTime = Math.floor(Date.now() / 1000);
+            const timeToExpiry = payload.exp - currentTime;
+            
+            // If token expires in less than 2 minutes, force refresh
+            let token = currentToken;
+            if (timeToExpiry < 120) {
+              console.log(`Token expires in ${timeToExpiry} seconds, forcing refresh before request...`);
+              token = await auth.currentUser.getIdToken(true);
+            }
+            
+            config.headers.Authorization = `Bearer ${token}`;
+            console.log(`Request to ${config.url}: Using Firebase token (expires in ${timeToExpiry}s)`);
 
-          // Always keep localStorage token in sync
-          localStorage.setItem("auth_token", token);
+            // Always keep localStorage token in sync
+            localStorage.setItem("auth_token", token);
+          } catch (decodeError) {
+            // If token decode fails, force refresh
+            const token = await auth.currentUser.getIdToken(true);
+            config.headers.Authorization = `Bearer ${token}`;
+            localStorage.setItem("auth_token", token);
+            console.log(`Request to ${config.url}: Token decode failed, used fresh token`);
+          }
         } catch (error) {
           console.warn(`Request to ${config.url}: Unable to get Firebase token:`, error);
         }
@@ -62,7 +82,7 @@ function setupTokenRefreshInterceptor(axiosInstance: AxiosInstance) {
     (error) => Promise.reject(error)
   );
 
-  // Response interceptor with enhanced debugging
+  // Response interceptor with enhanced debugging and retry logic
   axiosInstance.interceptors.response.use(
     (response) => response,
     async (error) => {
@@ -72,23 +92,54 @@ function setupTokenRefreshInterceptor(axiosInstance: AxiosInstance) {
       console.log(`Response error for ${url}: ${error.response?.status}`);
 
       // If error is 401 and we can refresh, try again with fresh token
-      if (error.response?.status === 401 && auth.currentUser && !originalRequest._retry) {
+      if (error.response?.status === 401 && !originalRequest._retry) {
         originalRequest._retry = true;
 
-        try {
-          console.log(`Token rejected for ${url}, forcing refresh...`);
-          // Force refresh the token
-          const newToken = await auth.currentUser.getIdToken(true);
-          console.log('Token refreshed successfully');
+        // Check if we have a Firebase user
+        if (auth.currentUser) {
+          try {
+            console.log(`Token rejected for ${url}, forcing Firebase refresh...`);
+            // Force refresh the token
+            const newToken = await auth.currentUser.getIdToken(true);
+            console.log('Firebase token refreshed successfully');
 
-          // Update authorization header
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          localStorage.setItem("auth_token", newToken);
+            // Update authorization header
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            localStorage.setItem("auth_token", newToken);
 
-          // Retry with fresh token
-          return axiosInstance(originalRequest);
-        } catch (refreshError) {
-          console.error('Failed to refresh token:', refreshError);
+            // Retry with fresh token
+            return axiosInstance(originalRequest);
+          } catch (refreshError) {
+            console.error('Failed to refresh Firebase token:', refreshError);
+            // If refresh fails, redirect to login or clear auth state
+            localStorage.removeItem("auth_token");
+          }
+        } else {
+          // No Firebase user, check if we have a JWT refresh token
+          try {
+            console.log(`Token rejected for ${url}, attempting JWT refresh...`);
+            const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+              method: 'POST',
+              credentials: 'include',
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              if (data.accessToken) {
+                console.log('JWT token refreshed successfully');
+                originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+                localStorage.setItem("auth_token", data.accessToken);
+
+                // Retry with fresh token
+                return axiosInstance(originalRequest);
+              }
+            }
+          } catch (refreshError) {
+            console.error('Failed to refresh JWT token:', refreshError);
+          }
+          
+          // If all refresh attempts fail, clear auth state
+          localStorage.removeItem("auth_token");
         }
       }
 
