@@ -6,6 +6,7 @@ import { SignupForm } from "@/components/signup-form";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loading } from "@/components/ui/loading";
 import TestPage from "./components/TestPage";
+import FreqTradeTestPage from "./pages/freqtrade-test";
 
 // Protected route component that uses our existing AuthContext
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -66,6 +67,16 @@ export const AppRoutes: React.FC<{ authDebugPage: React.ComponentType }> = ({
     <Routes>
       {/* Test route - unprotected */}
       <Route path="/test" element={<TestPage />} />
+
+      {/* FreqTrade Test route - protected */}
+      <Route
+        path="/freqtrade"
+        element={
+          <ProtectedRoute>
+            <FreqTradeTestPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Login route - only accessible when logged out */}
       <Route

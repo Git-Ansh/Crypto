@@ -62,6 +62,25 @@ const data = {
     },
   ],
   navMain: [
+    {
+      title: "FreqTrade Bots",
+      url: "/freqtrade",
+      icon: Bot,
+      items: [
+        {
+          title: "Bot Manager",
+          url: "/freqtrade",
+        },
+        {
+          title: "Trading Stats",
+          url: "/freqtrade",
+        },
+        {
+          title: "Bot Configuration",
+          url: "/freqtrade",
+        },
+      ],
+    },
     // {
     //   title: "Playground",
     //   url: "#",
