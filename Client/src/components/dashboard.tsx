@@ -51,7 +51,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useFreqTradeIntegration } from "@/hooks/use-freqtrade-integration";
+import { useFreqTradeSSE } from "@/hooks/use-freqtrade-sse";
 import {
   Select,
   SelectContent,
@@ -92,8 +92,7 @@ const WS_ENDPOINT = "wss://stream.binance.com:9443/ws";
 const COIN_GECKO_ENDPOINT =
   "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false";
 
-// Bot Manager API endpoint for chart data
-const BOT_MANAGER_API_BASE = "https://freqtrade.crypto-pilot.dev";
+// Bot Manager API handled by SSE service
 
 // Define the symbols you want to track – note these are in the Binance pair format.
 const TOP_SYMBOLS = [
@@ -152,7 +151,7 @@ interface CurrencyData {
   lastUpdated: number;
 }
 
-interface PortfolioData {
+interface LocalPortfolioData {
   totalValue: number;
   paperBalance: number;
   profitLossPercentage?: number;
@@ -232,19 +231,21 @@ export default function Dashboard() {
   const [portfolioChartLoading, setPortfolioChartLoading] =
     useState<boolean>(false);
 
-  // Refs for WebSocket and batching updates
-  const wsRef = useRef<WebSocket | null>(null);
+  // Refs for batching updates
   const messageCountRef = useRef<number>(0);
   const batchTimerRef = useRef<number | null>(null);
   const priceBufferRef = useRef<number | null>(null);
   const lastChartUpdateRef = useRef<number>(Date.now());
+  
+  // WebSocket ref for Binance connection (market data)
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Ref for latest prices for all currencies (to batch table updates)
   const latestPricesRef = useRef<
     Record<string, { price: number; lastUpdated: number }>
   >({});
 
-  // FreqTrade Integration
+  // FreqTrade SSE Integration
   const {
     isConnected: freqTradeConnected,
     connectionError: freqTradeError,
@@ -253,16 +254,44 @@ export default function Dashboard() {
     portfolioLoading: freqTradePortfolioLoading,
     bots: freqTradeBots,
     botsLoading: freqTradeBotsLoading,
-    recentTrades: freqTradeRecentTrades,
     chartData: freqTradeChartData,
-    portfolioHistory: freqTradePortfolioHistory,
-    isFreqTradeAvailable,
+    chartLoading: freqTradeChartLoading,
     refreshData: refreshFreqTradeData,
-    requestPortfolioHistory: requestFreqTradePortfolioHistory,
-    startBot,
-    stopBot,
-    updateBotConfig,
-  } = useFreqTradeIntegration();
+    fetchChartData: fetchFreqTradeChartData,
+    fetchAllChartData: fetchAllFreqTradeChartData,
+  } = useFreqTradeSSE();
+
+  // Helper variables for backward compatibility
+  const isFreqTradeAvailable = freqTradeConnected || freqTradePortfolio !== null;
+  const hasPortfolioData = freqTradePortfolio !== null;
+  
+  // Debug logging for portfolio data (reduced)
+  if (freqTradePortfolio && freqTradePortfolio.portfolioValue > 0) {
+    console.log('🎯 [DASHBOARD] Portfolio data received:', {
+      portfolioValue: freqTradePortfolio.portfolioValue,
+      totalPnL: freqTradePortfolio.totalPnL,
+      connected: freqTradeConnected
+    });
+  }
+  const hasBotsData = freqTradeBots.length > 0;
+  const freqTradeRecentTrades: any[] = []; // Will be updated when trade data is available
+  const freqTradePortfolioHistory: any[] = []; // Chart data now handled differently
+
+  // Bot control functions (placeholder - will be implemented with SSE service)
+  const startBot = useCallback(async (botId: string) => {
+    console.log(`🤖 Start bot requested: ${botId} (not yet implemented in SSE service)`);
+    // TODO: Implement bot start functionality
+  }, []);
+
+  const stopBot = useCallback(async (botId: string) => {
+    console.log(`🤖 Stop bot requested: ${botId} (not yet implemented in SSE service)`);
+    // TODO: Implement bot stop functionality
+  }, []);
+
+  const updateBotConfig = useCallback(async (botId: string, config: any) => {
+    console.log(`🤖 Bot config update requested: ${botId}`, config, "(not yet implemented in SSE service)");
+    // TODO: Implement bot config update functionality
+  }, []);
 
   // Helper function to safely update portfolio data for a specific timeframe
   const updatePortfolioDataForTimeframe = useCallback((timeframe: "1H" | "24H" | "7D" | "30D", data: any[]) => {
@@ -279,7 +308,6 @@ export default function Dashboard() {
   // Helper function to get data for current timeframe
   const getCurrentTimeframeData = useCallback(() => {
     const data = portfolioDataByTimeframe[portfolioDateRange] || [];
-    console.log(`📊 📖 Getting data for ${portfolioDateRange}: ${data.length} points`);
     return data;
   }, [portfolioDataByTimeframe, portfolioDateRange]);
 
@@ -893,19 +921,7 @@ export default function Dashboard() {
     [topCurrencies, initializeDashboardForCurrency]
   );
 
-  const handleRefresh = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const ticker = await fetchTickerDataForCurrency(selectedCurrency);
-      setCryptoData(ticker);
-      setLastUpdated(new Date().toLocaleTimeString());
-      setLoading(false);
-    } catch (err: any) {
-      setError(err?.message || "Failed to refresh price");
-      setLoading(false);
-    }
-  }, [fetchTickerDataForCurrency, selectedCurrency]);
+  // Placeholder for handleRefresh - will be defined after fetchPortfolioChartData
 
   // Zoom/Pan via Mouse & Touch
   const handleTouchStart = useCallback(
@@ -1128,16 +1144,11 @@ export default function Dashboard() {
   }, [panState.isPanning]);
 
   // ====== Portfolio Distribution and Bot Advanced Settings ======
-  const portfolioDistributionData = openPositions.map(
-    (pos: SimplePosition) => ({
-      name: pos.symbol,
-      value: pos.amount,
-    })
-  );
+  // portfolioDistributionData removed as it was unused
 
   const [botRiskLevel, setBotRiskLevel] = useState<number>(50);
-  const [botTradesPerDay, setBotTradesPerDay] = useState<number>(8);
-  const [botSuccessRate, setBotSuccessRate] = useState<number>(67);
+  const botTradesPerDay = 8; // Static value
+  const botSuccessRate = 67; // Static value
   const [botAutoRebalance, setBotAutoRebalance] = useState<boolean>(true);
   const [botDCAEnabled, setBotDCAEnabled] = useState<boolean>(true);
   const [botShowAdvanced, setBotShowAdvanced] = useState<boolean>(false);
@@ -1145,60 +1156,56 @@ export default function Dashboard() {
   const fetchPortfolioChartData = useCallback(
     async (timeframe: "1H" | "24H" | "7D" | "30D") => {
       setPortfolioChartLoading(true);
-      console.log(
-        `� fetchPortfolioChartData called for timeframe: ${timeframe}`
-      );
+      console.log(`📈 fetchPortfolioChartData called for timeframe: ${timeframe}`);
       console.log(`🔄 Current timeframe data length: ${getCurrentTimeframeData().length}`);
 
       // Track the current request to prevent race conditions
       currentTimeframeRequestRef.current = timeframe;
 
       try {
-        // Use WebSocket-based approach instead of failing REST API
+        // Use SSE-based chart data fetching
         if (freqTradeConnected) {
-          console.log(`🔄 FreqTrade connected, generating fallback data for ${timeframe}`);
+          console.log(`🔄 FreqTrade SSE connected, fetching chart data for ${timeframe}`);
           
-          // Immediately show fallback data to prevent empty chart during loading
-          if (freqTradePortfolio) {
-            const currentValue = freqTradePortfolio.portfolioValue || freqTradePortfolio.totalBalance || 0;
-            const currentPnL = freqTradePortfolio.totalPnL || 0;
+          // Map timeframe format to API format
+          const apiTimeframe = timeframe === "1H" ? "1h" : 
+                              timeframe === "24H" ? "24h" :
+                              timeframe === "7D" ? "7d" : "30d";
+
+          // Check if we already have data for this timeframe
+          const existingData = freqTradeChartData?.[apiTimeframe];
+          if (existingData && existingData.data && existingData.data.length > 0) {
+            console.log(`� Using existing chart data for ${timeframe}: ${existingData.data.length} points`);
             
-            console.log(`🔄 Generating fallback data: currentValue=${currentValue}, currentPnL=${currentPnL}, timeframe=${timeframe}`);
-            const fallbackData = generateFallbackChartData(timeframe, currentValue, currentPnL);
-            console.log(`🔄 Generated ${fallbackData.length} fallback points for ${timeframe}`);
-            updatePortfolioDataForTimeframe(timeframe, fallbackData);
-            console.log(`📊 Showing immediate fallback data for ${timeframe}: ${fallbackData.length} points from ${fallbackData[0]?.timestamp.toISOString()} to ${fallbackData[fallbackData.length-1]?.timestamp.toISOString()}`);
-            console.log(`📊 Fallback data time span: ${((fallbackData[fallbackData.length-1]?.timestamp.getTime() - fallbackData[0]?.timestamp.getTime()) / (1000 * 60)).toFixed(1)} minutes`);
+            // Transform SSE chart data to internal format
+            const transformedData = existingData.data.map((point: any) => ({
+              timestamp: new Date(point.timestamp),
+              portfolioValue: point.portfolioValue,
+              totalPnL: point.totalPnL,
+              pnlPercentage: point.totalPnL / (point.portfolioValue - point.totalPnL),
+            }));
+            
+            updatePortfolioDataForTimeframe(timeframe, transformedData);
+            setPortfolioChartLoading(false);
+            return;
           }
+
+          // Fetch new chart data from SSE service
+          console.log(`📈 Fetching fresh chart data for ${apiTimeframe}...`);
+          await fetchFreqTradeChartData(apiTimeframe as '1h' | '24h' | '7d' | '30d');
           
-          // Request portfolio history via WebSocket for the specific timeframe
-          console.log(`📊 Requesting new data for timeframe: ${timeframe}`);
-          requestFreqTradePortfolioHistory(timeframe);
-
-          // Set a shorter timeout to provide fallback data if no response within 3 seconds
-          setTimeout(() => {
-            if (currentTimeframeRequestRef.current === timeframe) {
-              console.log(`📊 Timeout waiting for ${timeframe} data, keeping fallback`);
-              setPortfolioChartLoading(false);
-              currentTimeframeRequestRef.current = null;
-            }
-          }, 3000);
-
-          // Don't try to process data immediately - let the WebSocket response handle it
-          // The loading state will be cleared when data arrives via the useEffect watching freqTradePortfolioHistory
+          // Data will be updated via the chart data effect hook
         } else {
-          console.log(
-            `📊 FreqTrade not connected, cannot fetch chart data for ${timeframe}`
-          );
+          console.log(`📊 FreqTrade not connected, no data available for ${timeframe}`);
           
-          // Generate mock data for demo purposes when not connected
-          const mockData = generateMockChartData(timeframe);
-          updatePortfolioDataForTimeframe(timeframe, mockData);
+          // Clear any existing data and show data unavailable state
+          updatePortfolioDataForTimeframe(timeframe, []);
           setPortfolioChartLoading(false);
-          console.log(`📊 Using mock data: ${mockData.length} points for ${timeframe}`);
         }
       } catch (error) {
-        console.error("Error processing portfolio chart data:", error);
+        console.error("Error fetching portfolio chart data:", error);
+        
+        // Clear data on error - no fallback mock data
         updatePortfolioDataForTimeframe(timeframe, []);
         setPortfolioChartLoading(false);
       }
@@ -1206,12 +1213,80 @@ export default function Dashboard() {
     [
       freqTradeConnected,
       freqTradePortfolio,
-      requestFreqTradePortfolioHistory,
+      freqTradeChartData,
+      fetchFreqTradeChartData,
     ]
   );
 
+  // Handle chart data updates from SSE service
+  useEffect(() => {
+    if (!freqTradeChartData || Object.keys(freqTradeChartData).length === 0) {
+      return;
+    }
+    
+    // Check if we have data for the current timeframe
+    const apiTimeframe = portfolioDateRange === "1H" ? "1h" : 
+                        portfolioDateRange === "24H" ? "24h" :
+                        portfolioDateRange === "7D" ? "7d" : "30d";
+    
+    const chartDataForTimeframe = freqTradeChartData[apiTimeframe];
+    
+    if (chartDataForTimeframe && chartDataForTimeframe.data && chartDataForTimeframe.data.length > 0) {
+      // Transform SSE chart data to internal format
+      const transformedData = chartDataForTimeframe.data.map((point: any) => ({
+        timestamp: new Date(point.timestamp),
+        date: new Date(point.timestamp), // Chart expects 'date' field
+        portfolioValue: point.portfolioValue,
+        totalPnL: point.totalPnL,
+        // Chart component expects these specific fields:
+        totalValue: point.portfolioValue, // Chart looks for 'totalValue' or 'value'
+        value: point.portfolioValue, // No fallback value
+        paperBalance: 0, // Not used in FreqTrade but expected by chart
+        total: point.portfolioValue, // This is what actually gets displayed
+        pnlPercentage: point.totalPnL / Math.max(point.portfolioValue - point.totalPnL, 1), // Avoid division by zero
+      }));
+      
+      updatePortfolioDataForTimeframe(portfolioDateRange, transformedData);
+      setPortfolioChartLoading(false);
+    } else {
+      // Live portfolio fallback chart data disabled - no mock data, only show data unavailable state
+      console.log('📊 Live portfolio fallback disabled - showing data unavailable if no chart data');
+      setPortfolioChartLoading(false);
+    }
+  }, [freqTradeChartData, portfolioDateRange, updatePortfolioDataForTimeframe, freqTradeConnected, freqTradePortfolio]);
+
+  // Main refresh function
+  const handleRefresh = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Refresh crypto price data
+      const ticker = await fetchTickerDataForCurrency(selectedCurrency);
+      setCryptoData(ticker);
+      
+      // Refresh FreqTrade SSE data
+      await refreshFreqTradeData();
+      
+      // Refresh current portfolio chart data
+      await fetchPortfolioChartData(portfolioDateRange);
+
+      setLastUpdated(new Date().toLocaleTimeString());
+      setLoading(false);
+    } catch (err: any) {
+      setError(err?.message || "Failed to refresh data");
+      setLoading(false);
+    }
+  }, [fetchTickerDataForCurrency, selectedCurrency, refreshFreqTradeData, fetchPortfolioChartData, portfolioDateRange]);
+
   // Helper function to generate fallback chart data
+  // Fallback data generation disabled - return empty array
   const generateFallbackChartData = (timeframe: string, currentValue: number, currentPnL: number) => {
+    console.log(`📊 Fallback data disabled for ${timeframe} - showing data unavailable`);
+    return [];
+  };
+  
+  const generateFallbackChartData_DISABLED = (timeframe: string, currentValue: number, currentPnL: number) => {
     const now = new Date();
     const points = [];
     let intervals = 10;
@@ -1294,7 +1369,13 @@ export default function Dashboard() {
   };
 
   // Helper function to generate mock chart data for demo
+  // Mock data generation removed - function disabled
   const generateMockChartData = (timeframe: string) => {
+    console.log(`📊 Mock data disabled for ${timeframe} - showing data unavailable`);
+    return [];
+  };
+  
+  const generateMockChartData_DISABLED = (timeframe: string) => {
     const now = new Date();
     const points = [];
     let intervals = 10;
@@ -1384,64 +1465,7 @@ export default function Dashboard() {
     fetchPortfolioChartData(portfolioDateRange);
   }, [portfolioDateRange, fetchPortfolioChartData]);
 
-  // Watch for FreqTrade portfolio history changes and update local state
-  useEffect(() => {
-    if (freqTradePortfolioHistory && freqTradePortfolioHistory.length > 0) {
-      console.log(
-        `📊 FreqTrade portfolio history updated: ${freqTradePortfolioHistory.length} points for timeframe: ${portfolioDateRange}`
-      );
-      
-      // NEW: Check if this data has timeframe information and matches our current timeframe
-      const firstPoint = freqTradePortfolioHistory[0];
-      const dataTimeframe = firstPoint?._requestedTimeframe;
-      
-      if (dataTimeframe && dataTimeframe !== portfolioDateRange) {
-        console.log(`📊 ❌ Data is for different timeframe (data: ${dataTimeframe}, current: ${portfolioDateRange}), ignoring to prevent race condition`);
-        return;
-      }
-      
-      // CRITICAL: Only update if this data is for the current timeframe
-      if (currentTimeframeRequestRef.current === portfolioDateRange) {
-        console.log(`📊 ✅ Data matches current timeframe ${portfolioDateRange}, updating chart`);
-        
-        // Clear the current request tracker since we got a response
-        currentTimeframeRequestRef.current = null;
-        
-        // Simple data transformation without complex filtering
-        const transformedData = freqTradePortfolioHistory
-          .map((point: any) => {
-            const timestamp = point.timestamp
-              ? new Date(point.timestamp)
-              : new Date();
-            const portfolioValue = point.portfolioValue || point.totalBalance || point.value || 0;
-            
-            return {
-              timestamp: timestamp,
-              date: timestamp,
-              totalValue: portfolioValue,
-              paperBalance: point.totalPnL || point.pnl || 0,
-              value: portfolioValue,
-              total: portfolioValue + (point.totalPnL || point.pnl || 0),
-              rawPoint: point,
-              _isRealData: true, // Mark as real data to distinguish from fallback
-              _timeframe: portfolioDateRange // Mark with current timeframe
-            };
-          })
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-        console.log(`📊 Processed ${transformedData.length} real data points for ${portfolioDateRange} - replacing any fallback data`);
-        console.log(`📊 Data time range: ${transformedData[0]?.timestamp} to ${transformedData[transformedData.length-1]?.timestamp}`);
-        
-        // Always set the real data, replacing any fallback data
-        updatePortfolioDataForTimeframe(portfolioDateRange, transformedData);
-        setPortfolioChartLoading(false);
-        
-        console.log(`📊 Chart updated with REAL data: ${transformedData.length} data points for ${portfolioDateRange}`);
-      } else {
-        console.log(`📊 ❌ Data is for different timeframe (current: ${portfolioDateRange}, request: ${currentTimeframeRequestRef.current}), ignoring`);
-      }
-    }
-  }, [freqTradePortfolioHistory, portfolioDateRange]);
+  // Old WebSocket-based portfolio history watching removed - now handled by SSE chart data effect
 
   // Safety mechanism: Clear loading state after 8 seconds if still loading
   useEffect(() => {
@@ -1450,16 +1474,12 @@ export default function Dashboard() {
         console.log(`📊 Safety timeout: Clearing stuck loading state for ${portfolioDateRange}`);
         setPortfolioChartLoading(false);
         
-        // Only provide fallback if we have no data OR the current data is not for this timeframe
+        // No fallback data - leave empty if no data available
         const currentData = getCurrentTimeframeData();
         if (currentData.length === 0) {
-          console.log(`📊 Generating safety fallback for ${portfolioDateRange} (no data exists)`);
-          const fallbackData = generateMockChartData(portfolioDateRange);
-          updatePortfolioDataForTimeframe(portfolioDateRange, fallbackData);
-          console.log(`📊 Loading fallback mock data for ${portfolioDateRange}: ${fallbackData.length} points`);
-          console.log(`📊 Mock data time span: ${((fallbackData[fallbackData.length-1]?.timestamp.getTime() - fallbackData[0]?.timestamp.getTime()) / (1000 * 60)).toFixed(1)} minutes`);
+          console.log(`📊 No data available for ${portfolioDateRange} - showing data unavailable state`);
         } else {
-          console.log(`📊 Safety timeout but data already exists for ${portfolioDateRange}, keeping existing data`);
+          console.log(`📊 Data exists for ${portfolioDateRange}, keeping existing data`);
         }
       }
     }, 8000);
@@ -2491,9 +2511,7 @@ export default function Dashboard() {
                               )
                             ) : (
                               <span className="text-muted-foreground">
-                                {freqTradeConnected
-                                  ? "Connecting..."
-                                  : "Loading..."}
+                                Data unavailable
                               </span>
                             )}
                           </p>
@@ -2503,8 +2521,8 @@ export default function Dashboard() {
                             </p>
                           )}
                           {!freqTradeConnected && (
-                            <p className="text-xs text-yellow-500 mt-1">
-                              Connecting to FreqTrade...
+                            <p className="text-xs text-muted-foreground mt-1">
+                              FreqTrade disconnected
                             </p>
                           )}
                         </div>
@@ -2514,7 +2532,7 @@ export default function Dashboard() {
                           </p>
                           {!freqTradeConnected ? (
                             <p className="text-xs text-muted-foreground">
-                              Loading positions...
+                              Data unavailable
                             </p>
                           ) : freqTradeRecentTrades?.length > 0 ? (
                             <div className="space-y-1">
@@ -2556,9 +2574,7 @@ export default function Dashboard() {
                             </>
                           ) : (
                             <span className="text-muted-foreground">
-                              {freqTradeConnected
-                                ? "Connecting..."
-                                : "Loading..."}
+                              Data unavailable
                             </span>
                           )}
                         </p>
@@ -2572,7 +2588,7 @@ export default function Dashboard() {
                           </p>
                           {!freqTradeConnected ? (
                             <p className="text-sm text-muted-foreground sm:mt-1">
-                              Loading positions...
+                              Data unavailable
                             </p>
                           ) : freqTradeRecentTrades?.length > 0 ? (
                             <div className="text-right sm:text-left sm:mt-1">
@@ -3679,7 +3695,10 @@ export default function Dashboard() {
                               <div>
                                 <p className="font-medium text-sm">{`Bot ${bot.instanceId}`}</p>
                                 <p className="text-xs text-muted-foreground capitalize">
-                                  {bot.status}
+                                  {Array.isArray(bot.status) 
+                                    ? `${bot.status.length} active trades`
+                                    : bot.status || 'Inactive'
+                                  }
                                 </p>
                               </div>
                             </div>
@@ -3837,7 +3856,7 @@ export default function Dashboard() {
                             >
                               {freqTradeConnected
                                 ? "No recent FreqTrade trades"
-                                : "Loading trades..."}
+                                : "Data unavailable"}
                             </TableCell>
                           </TableRow>
                         ) : (

@@ -1,0 +1,736 @@
+# FreqTrade Bot Manager API Documentation
+*For Frontend Development Integration*
+
+## Overview
+
+The FreqTrade Bot Manager API provides comprehensive portfolio management, real-time streaming, historical data, and bot control functionality. This document covers all endpoints, authentication, data formats, and integration examples for frontend development.
+
+**Base URL**: `https://freqtrade.crypto-pilot.dev`  
+**API Version**: v1  
+**Protocol**: REST API + Server-Sent Events (SSE)
+
+---
+
+## Authentication
+
+### JWT Token Required
+All API endpoints require JWT authentication via the `token` query parameter or `Authorization` header.
+
+```javascript
+// Query parameter method (recommended for SSE)
+const url = `https://freqtrade.crypto-pilot.dev/api/stream?token=${yourJwtToken}`;
+
+// Header method (for REST APIs)
+const headers = {
+  'Authorization': `Bearer ${yourJwtToken}`,
+  'Content-Type': 'application/json'
+};
+```
+
+### Obtaining JWT Tokens
+JWT tokens are issued by your authentication system and contain user information:
+- `uid`: User identifier
+- `email`: User email
+- `role`: User role (user/admin)
+
+---
+
+## Core API Endpoints
+
+### 1. Portfolio Management
+
+#### Real-Time Portfolio Streaming (SSE)
+**Primary endpoint for live portfolio updates**
+
+```
+GET /api/stream?token={jwt_token}
+```
+
+**Response Format** (Server-Sent Events):
+```javascript
+// Event stream data
+{
+  "timestamp": "2025-01-12T10:30:15.123Z",
+  "portfolioValue": 20000.61,
+  "totalPnL": 0.61,
+  "pnlPercentage": 0.003,
+  "activeBots": 3,
+  "botCount": 3,
+  "totalBalance": 20000.61,
+  "startingBalance": 20000.00,
+  "bots": [
+    {
+      "instanceId": "bot-123",
+      "status": "running",
+      "balance": 6666.87,
+      "pnl": 0.20,
+      "strategy": "EmaRsiStrategy",
+      "lastUpdate": "2025-01-12T10:30:14.000Z"
+    }
+  ]
+}
+```
+
+**Frontend Integration**:
+```javascript
+const eventSource = new EventSource(`https://freqtrade.crypto-pilot.dev/api/stream?token=${token}`);
+
+eventSource.onmessage = function(event) {
+    const portfolioData = JSON.parse(event.data);
+    updatePortfolioUI(portfolioData);
+};
+
+eventSource.onerror = function(event) {
+    console.error('SSE connection error:', event);
+    // Implement reconnection logic
+};
+```
+
+#### Chart Data Endpoints
+**Historical data for portfolio charts**
+
+##### Single Interval Chart Data
+```
+GET /api/charts/portfolio/{interval}?token={jwt_token}
+```
+
+**Intervals**: `1h`, `24h`, `7d`, `30d`
+
+**Response Format**:
+```javascript
+{
+  "success": true,
+  "interval": "24h",
+  "data": [
+    {
+      "timestamp": "2025-01-12T09:00:00.000Z",
+      "portfolioValue": 20000.45,
+      "totalPnL": 0.45,
+      "activeBots": 3,
+      "botCount": 3
+    }
+    // ... more data points
+  ],
+  "metadata": {
+    "totalPoints": 48,
+    "timeRange": {
+      "start": "2025-01-11T10:30:00.000Z",
+      "end": "2025-01-12T10:30:00.000Z"
+    },
+    "aggregationWindow": "30min"
+  }
+}
+```
+
+##### All Intervals Chart Data
+```
+GET /api/charts/portfolio?token={jwt_token}
+```
+
+**Response Format**:
+```javascript
+{
+  "success": true,
+  "data": {
+    "1h": { /* 1 hour data */ },
+    "24h": { /* 24 hour data */ },
+    "7d": { /* 7 day data */ },
+    "30d": { /* 30 day data */ }
+  }
+}
+```
+
+##### Raw Historical Data
+```
+GET /api/portfolio/history?token={jwt_token}
+```
+
+**Response**: Raw portfolio snapshots (all available data)
+
+### 2. Bot Management
+
+#### List User Bots
+```
+GET /api/bots?token={jwt_token}
+```
+
+#### Bot Status
+```
+GET /api/bots/{instanceId}/status?token={jwt_token}
+```
+
+#### Bot Balance
+```
+GET /api/bots/{instanceId}/balance?token={jwt_token}
+```
+
+#### Bot Profit
+```
+GET /api/bots/{instanceId}/profit?token={jwt_token}
+```
+
+#### Create New Bot
+```
+POST /api/provision
+Headers: Authorization: Bearer {jwt_token}
+Body: {
+  "instanceId": "my-new-bot",
+  "port": 8101,
+  "apiUsername": "admin",
+  "apiPassword": "secure_password"
+}
+```
+
+### 3. Health & Status
+
+#### API Health Check
+```
+GET /api/health
+GET /health
+```
+
+**Response**:
+```javascript
+{
+  "ok": true,
+  "status": "ok",
+  "service": "bot-manager",
+  "uptime": 3600.5,
+  "timestamp": "2025-01-12T10:30:15.123Z"
+}
+```
+
+---
+
+## Data Formats & Models
+
+### Portfolio Data Model
+```typescript
+interface PortfolioData {
+  timestamp: string;           // ISO 8601 timestamp
+  portfolioValue: number;      // Total portfolio value in USD
+  totalPnL: number;           // Profit/Loss in USD
+  pnlPercentage: number;      // P&L as percentage (0.01 = 1%)
+  activeBots: number;         // Number of active bots
+  botCount: number;           // Total number of bots
+  totalBalance: number;       // Current total balance
+  startingBalance: number;    // Starting balance for P&L calculation
+  bots: BotData[];           // Array of individual bot data
+}
+
+interface BotData {
+  instanceId: string;         // Unique bot identifier
+  status: string;            // "running", "stopped", "error"
+  balance: number;           // Bot's current balance
+  pnl: number;              // Bot's P&L
+  strategy: string;         // Trading strategy name
+  lastUpdate: string;       // Last update timestamp
+}
+```
+
+### Chart Data Model
+```typescript
+interface ChartResponse {
+  success: boolean;
+  interval: string;          // "1h", "24h", "7d", "30d"
+  data: ChartPoint[];
+  metadata: ChartMetadata;
+}
+
+interface ChartPoint {
+  timestamp: string;         // ISO 8601 timestamp
+  portfolioValue: number;    // Portfolio value at this point
+  totalPnL: number;         // P&L at this point
+  activeBots: number;       // Active bots count
+  botCount: number;         // Total bots count
+}
+
+interface ChartMetadata {
+  totalPoints: number;       // Number of data points
+  timeRange: {
+    start: string;          // Start timestamp
+    end: string;            // End timestamp
+  };
+  aggregationWindow: string; // e.g., "5min", "30min", "4h", "24h"
+}
+```
+
+---
+
+## Frontend Integration Examples
+
+### React Integration
+
+```jsx
+import React, { useState, useEffect } from 'react';
+import { Line } from 'react-chartjs-2';
+
+const PortfolioDashboard = ({ token }) => {
+  const [portfolioData, setPortfolioData] = useState(null);
+  const [chartData, setChartData] = useState({});
+  const [selectedInterval, setSelectedInterval] = useState('24h');
+
+  // Real-time SSE connection
+  useEffect(() => {
+    const eventSource = new EventSource(
+      `https://freqtrade.crypto-pilot.dev/api/stream?token=${token}`
+    );
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setPortfolioData(data);
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('SSE Error:', error);
+      // Implement reconnection logic
+    };
+
+    return () => eventSource.close();
+  }, [token]);
+
+  // Load chart data
+  useEffect(() => {
+    const loadChartData = async () => {
+      try {
+        const response = await fetch(
+          `https://freqtrade.crypto-pilot.dev/api/charts/portfolio/${selectedInterval}?token=${token}`
+        );
+        const data = await response.json();
+        setChartData(data);
+      } catch (error) {
+        console.error('Chart data error:', error);
+      }
+    };
+
+    loadChartData();
+  }, [selectedInterval, token]);
+
+  const chartOptions = {
+    responsive: true,
+    scales: {
+      x: {
+        type: 'time',
+        time: {
+          displayFormats: {
+            hour: 'HH:mm',
+            day: 'MMM DD',
+          }
+        }
+      },
+      y: {
+        beginAtZero: false,
+        ticks: {
+          callback: (value) => `$${value.toFixed(2)}`
+        }
+      }
+    }
+  };
+
+  return (
+    <div className="portfolio-dashboard">
+      {/* Real-time Portfolio Summary */}
+      {portfolioData && (
+        <div className="portfolio-summary">
+          <h2>Portfolio Overview</h2>
+          <div className="metrics">
+            <div className="metric">
+              <span>Total Value</span>
+              <span>${portfolioData.portfolioValue.toFixed(2)}</span>
+            </div>
+            <div className="metric">
+              <span>P&L</span>
+              <span className={portfolioData.totalPnL >= 0 ? 'profit' : 'loss'}>
+                ${portfolioData.totalPnL.toFixed(2)} ({(portfolioData.pnlPercentage * 100).toFixed(2)}%)
+              </span>
+            </div>
+            <div className="metric">
+              <span>Active Bots</span>
+              <span>{portfolioData.activeBots}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chart Controls */}
+      <div className="chart-controls">
+        {['1h', '24h', '7d', '30d'].map(interval => (
+          <button
+            key={interval}
+            onClick={() => setSelectedInterval(interval)}
+            className={selectedInterval === interval ? 'active' : ''}
+          >
+            {interval}
+          </button>
+        ))}
+      </div>
+
+      {/* Chart */}
+      {chartData.data && (
+        <div className="chart-container">
+          <Line
+            data={{
+              labels: chartData.data.map(point => new Date(point.timestamp)),
+              datasets: [{
+                label: 'Portfolio Value',
+                data: chartData.data.map(point => point.portfolioValue),
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                fill: true
+              }]
+            }}
+            options={chartOptions}
+          />
+        </div>
+      )}
+
+      {/* Bot List */}
+      {portfolioData?.bots && (
+        <div className="bot-list">
+          <h3>Active Bots</h3>
+          {portfolioData.bots.map(bot => (
+            <div key={bot.instanceId} className="bot-card">
+              <div className="bot-info">
+                <span className="bot-id">{bot.instanceId}</span>
+                <span className={`bot-status ${bot.status}`}>{bot.status}</span>
+              </div>
+              <div className="bot-metrics">
+                <span>Balance: ${bot.balance.toFixed(2)}</span>
+                <span className={bot.pnl >= 0 ? 'profit' : 'loss'}>
+                  P&L: ${bot.pnl.toFixed(2)}
+                </span>
+                <span>Strategy: {bot.strategy}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PortfolioDashboard;
+```
+
+### Vanilla JavaScript Integration
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FreqTrade Portfolio Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+    <div id="dashboard">
+        <div id="portfolio-summary">
+            <h2>Portfolio Overview</h2>
+            <div id="metrics">
+                <div>Total Value: $<span id="total-value">0.00</span></div>
+                <div>P&L: $<span id="pnl">0.00</span> (<span id="pnl-percent">0.00%</span>)</div>
+                <div>Active Bots: <span id="active-bots">0</span></div>
+            </div>
+        </div>
+
+        <div id="chart-controls">
+            <button onclick="loadChart('1h')">1 Hour</button>
+            <button onclick="loadChart('24h')" class="active">24 Hours</button>
+            <button onclick="loadChart('7d')">7 Days</button>
+            <button onclick="loadChart('30d')">30 Days</button>
+        </div>
+
+        <canvas id="portfolio-chart"></canvas>
+
+        <div id="bot-list">
+            <h3>Active Bots</h3>
+            <div id="bots"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://freqtrade.crypto-pilot.dev';
+        const TOKEN = 'your_jwt_token_here'; // Replace with actual token
+        
+        let chart;
+        let eventSource;
+
+        // Initialize dashboard
+        function initDashboard() {
+            connectSSE();
+            loadChart('24h');
+        }
+
+        // Connect to SSE for real-time updates
+        function connectSSE() {
+            eventSource = new EventSource(`${API_BASE}/api/stream?token=${TOKEN}`);
+            
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                updatePortfolioSummary(data);
+                updateBotList(data.bots);
+            };
+
+            eventSource.onerror = function(event) {
+                console.error('SSE connection error:', event);
+                // Reconnect after 5 seconds
+                setTimeout(() => {
+                    eventSource.close();
+                    connectSSE();
+                }, 5000);
+            };
+        }
+
+        // Update portfolio summary
+        function updatePortfolioSummary(data) {
+            document.getElementById('total-value').textContent = data.portfolioValue.toFixed(2);
+            document.getElementById('pnl').textContent = data.totalPnL.toFixed(2);
+            document.getElementById('pnl-percent').textContent = (data.pnlPercentage * 100).toFixed(2);
+            document.getElementById('active-bots').textContent = data.activeBots;
+            
+            // Update P&L color
+            const pnlElement = document.getElementById('pnl');
+            pnlElement.className = data.totalPnL >= 0 ? 'profit' : 'loss';
+        }
+
+        // Update bot list
+        function updateBotList(bots) {
+            const container = document.getElementById('bots');
+            container.innerHTML = '';
+            
+            bots.forEach(bot => {
+                const botDiv = document.createElement('div');
+                botDiv.className = 'bot-card';
+                botDiv.innerHTML = `
+                    <div class="bot-info">
+                        <span class="bot-id">${bot.instanceId}</span>
+                        <span class="bot-status ${bot.status}">${bot.status}</span>
+                    </div>
+                    <div class="bot-metrics">
+                        <span>Balance: $${bot.balance.toFixed(2)}</span>
+                        <span class="${bot.pnl >= 0 ? 'profit' : 'loss'}">P&L: $${bot.pnl.toFixed(2)}</span>
+                        <span>Strategy: ${bot.strategy}</span>
+                    </div>
+                `;
+                container.appendChild(botDiv);
+            });
+        }
+
+        // Load chart data
+        async function loadChart(interval) {
+            try {
+                const response = await fetch(`${API_BASE}/api/charts/portfolio/${interval}?token=${TOKEN}`);
+                const chartData = await response.json();
+                
+                if (chartData.success) {
+                    updateChart(chartData.data, interval);
+                    
+                    // Update active button
+                    document.querySelectorAll('#chart-controls button').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    event.target.classList.add('active');
+                }
+            } catch (error) {
+                console.error('Error loading chart data:', error);
+            }
+        }
+
+        // Update chart
+        function updateChart(data, interval) {
+            const ctx = document.getElementById('portfolio-chart').getContext('2d');
+            
+            if (chart) {
+                chart.destroy();
+            }
+            
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(point => new Date(point.timestamp)),
+                    datasets: [{
+                        label: 'Portfolio Value',
+                        data: data.map(point => point.portfolioValue),
+                        borderColor: '#007bff',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                displayFormats: {
+                                    hour: 'HH:mm',
+                                    day: 'MMM DD'
+                                }
+                            }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toFixed(2);
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Portfolio Performance (${interval})`
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initDashboard);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+    </script>
+
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #dashboard { max-width: 1200px; margin: 0 auto; }
+        #portfolio-summary { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        #metrics { display: flex; gap: 20px; margin-top: 10px; }
+        #chart-controls { margin: 20px 0; }
+        #chart-controls button { padding: 8px 16px; margin-right: 10px; border: 1px solid #ddd; background: white; cursor: pointer; }
+        #chart-controls button.active { background: #007bff; color: white; }
+        #portfolio-chart { margin: 20px 0; max-height: 400px; }
+        .bot-card { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .bot-info { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .bot-metrics { display: flex; gap: 20px; }
+        .profit { color: #28a745; }
+        .loss { color: #dc3545; }
+        .bot-status.running { color: #28a745; }
+        .bot-status.stopped { color: #ffc107; }
+        .bot-status.error { color: #dc3545; }
+    </style>
+</body>
+</html>
+```
+
+---
+
+## Error Handling
+
+### Common HTTP Status Codes
+- `200`: Success
+- `401`: Unauthorized (invalid/expired token)
+- `403`: Forbidden (insufficient permissions)
+- `404`: Not found (invalid endpoint/resource)
+- `429`: Rate limited
+- `500`: Internal server error
+- `502`: Bad gateway (bot communication error)
+
+### Error Response Format
+```javascript
+{
+  "success": false,
+  "message": "Error description",
+  "error": "Detailed error message",
+  "timestamp": "2025-01-12T10:30:15.123Z"
+}
+```
+
+### SSE Reconnection Strategy
+```javascript
+function connectWithRetry(token, maxRetries = 5) {
+  let retryCount = 0;
+  
+  function connect() {
+    const eventSource = new EventSource(`${API_BASE}/api/stream?token=${token}`);
+    
+    eventSource.onerror = function(event) {
+      console.error('SSE connection error:', event);
+      eventSource.close();
+      
+      if (retryCount < maxRetries) {
+        retryCount++;
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000); // Exponential backoff
+        console.log(`Retrying in ${delay}ms... (attempt ${retryCount}/${maxRetries})`);
+        setTimeout(connect, delay);
+      } else {
+        console.error('Max retry attempts reached');
+      }
+    };
+    
+    eventSource.onopen = function() {
+      retryCount = 0; // Reset on successful connection
+      console.log('SSE connection established');
+    };
+    
+    return eventSource;
+  }
+  
+  return connect();
+}
+```
+
+---
+
+## Rate Limits
+
+- **Global**: 100 requests per 15 minutes per IP
+- **Authentication**: 10 token verification attempts per 15 minutes per IP
+- **SSE**: No explicit limits, but automatic reconnection recommended
+
+---
+
+## CORS Configuration
+
+The API supports the following origins:
+- `http://localhost:5173` (Development)
+- `http://localhost:3001` (Development)
+- `https://freqtrade.crypto-pilot.dev`
+- `https://crypto-pilot.dev`
+- `https://www.crypto-pilot.dev`
+- `https://app.crypto-pilot.dev`
+- `https://dashboard.crypto-pilot.dev`
+
+---
+
+## Security Notes
+
+1. **JWT Tokens**: Store securely, implement refresh logic
+2. **HTTPS Only**: All production traffic must use HTTPS
+3. **Rate Limiting**: Implement client-side rate limiting
+4. **Error Handling**: Don't expose sensitive information in error logs
+5. **Token Expiration**: Handle token expiration gracefully
+
+---
+
+## Support & Troubleshooting
+
+### Common Issues
+
+1. **SSE Connection Drops**: Implement exponential backoff reconnection
+2. **Token Expiration**: Monitor JWT expiration and refresh
+3. **CORS Errors**: Ensure your domain is in the allowed origins list
+4. **Chart Data Missing**: Check if portfolio snapshots are being collected
+
+### Debug Endpoints
+
+```javascript
+// Health check
+GET /api/health
+
+// Verify token is working
+GET /api/stream?token={token}
+// Should start streaming immediately if token is valid
+```
+
+---
+
+*This documentation covers the complete FreqTrade Bot Manager API for frontend integration. For additional support or custom endpoints, contact the development team.*

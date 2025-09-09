@@ -20,22 +20,10 @@ export function PortfolioChart({
   timeframe,
   isMobile = false,
 }: PortfolioChartProps) {
-  // Debug: Log what data we're receiving with generation timestamp
-  const currentTime = new Date().toISOString();
-  
-  console.log(`🎯 [${currentTime}] PortfolioChart received data for ${timeframe}:`, {
-    dataPoints: data?.length || 0,
-    timeframe,
-    firstPoint: data?.[0],
-    lastPoint: data?.[data.length - 1],
-    dataHashes: data?.slice(0, 3).map(p => ({ 
-      timestamp: p?.timestamp || p?.date, 
-      total: p?.total?.toFixed(2),
-      _timeframe: p?._timeframe,
-      _isFallback: p?._isFallback,
-      _isMockData: p?._isMockData
-    }))
-  });
+  // Only log when we actually have meaningful data
+  if (data && data.length > 0 && data[0]?.total > 0) {
+    console.log(`📈 Chart has ${data.length} points for ${timeframe}, value: $${data[0].total}`);
+  }
 
   if (!data || data.length === 0) {
     return (
@@ -74,15 +62,9 @@ export function PortfolioChart({
   // Sort data by timestamp to ensure chronological order
   formatData.sort((a, b) => a.timestamp - b.timestamp);
 
-  // Debug the actual time range of data
-  if (formatData.length > 0) {
-    const firstTime = new Date(formatData[0].timestamp);
-    const lastTime = new Date(formatData[formatData.length - 1].timestamp);
-    const timeSpanMinutes = (lastTime.getTime() - firstTime.getTime()) / (1000 * 60);
-    console.log(`🎯 Chart data time span for ${timeframe}: ${timeSpanMinutes.toFixed(1)} minutes`);
-    console.log(`🎯 Chart first timestamp: ${firstTime.toISOString()}`);
-    console.log(`🎯 Chart last timestamp: ${lastTime.toISOString()}`);
-    console.log(`🎯 Chart value range: ${formatData[0].total.toFixed(2)} to ${formatData[formatData.length - 1].total.toFixed(2)}`);
+  // Minimal debug for value range
+  if (formatData.length > 0 && formatData[0].total === 0) {
+    console.log(`⚠️ Chart data has zero values for ${timeframe}`);
   }
 
   const formatXAxis = (tickItem: any) => {
