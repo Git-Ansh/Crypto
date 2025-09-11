@@ -4175,7 +4175,7 @@ export default function Dashboard() {
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <Table className="w-full">
-                      <TableHeader>
+                      <TableHeader className="sticky top-0 bg-background z-10">
                         <TableRow>
                           <TableHead className="text-xs whitespace-nowrap">
                             Bot
@@ -4209,12 +4209,16 @@ export default function Dashboard() {
                           </TableHead>
                         </TableRow>
                       </TableHeader>
-                      <TableBody>
-                        <PositionsTable 
-                          isConnected={freqTradeConnected}
-                        />
-                      </TableBody>
                     </Table>
+                    <div className="max-h-[200px] overflow-y-auto">
+                      <Table className="w-full">
+                        <TableBody>
+                          <PositionsTable 
+                            isConnected={freqTradeConnected}
+                          />
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
