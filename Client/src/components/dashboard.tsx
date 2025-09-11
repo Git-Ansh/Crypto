@@ -82,6 +82,7 @@ import { BotRoadmap } from "@/components/bot-roadmap";
 import { AxiosError } from "axios";
 import { LoadingSpinner, InlineLoading } from "@/components/ui/loading";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { PositionsTable } from "@/components/positions-table";
 
 // ================== CONFIG ENDPOINTS ==================
 // Replace the Coindesk/CC endpoints with Binance endpoints
@@ -223,7 +224,7 @@ export default function Dashboard() {
     "1H": [],
     "24H": [],
     "7D": [],
-    "30D": []
+    "30D": [],
   });
   const [portfolioDateRange, setPortfolioDateRange] = useState<
     "1H" | "24H" | "7D" | "30D"
@@ -236,7 +237,7 @@ export default function Dashboard() {
   const batchTimerRef = useRef<number | null>(null);
   const priceBufferRef = useRef<number | null>(null);
   const lastChartUpdateRef = useRef<number>(Date.now());
-  
+
   // WebSocket ref for Binance connection (market data)
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -254,6 +255,8 @@ export default function Dashboard() {
     portfolioLoading: freqTradePortfolioLoading,
     bots: freqTradeBots,
     botsLoading: freqTradeBotsLoading,
+    trades: freqTradeTrades,
+    tradesLoading: freqTradeTradesLoading,
     chartData: freqTradeChartData,
     chartLoading: freqTradeChartLoading,
     refreshData: refreshFreqTradeData,
@@ -262,58 +265,151 @@ export default function Dashboard() {
   } = useFreqTradeSSE();
 
   // Helper variables for backward compatibility
-  const isFreqTradeAvailable = freqTradeConnected || freqTradePortfolio !== null;
+  const isFreqTradeAvailable =
+    freqTradeConnected || freqTradePortfolio !== null;
   const hasPortfolioData = freqTradePortfolio !== null;
-  
+
   // Debug logging for portfolio data (reduced)
   if (freqTradePortfolio && freqTradePortfolio.portfolioValue > 0) {
-    console.log('🎯 [DASHBOARD] Portfolio data received:', {
+    console.log("🎯 [DASHBOARD] Portfolio data received:", {
       portfolioValue: freqTradePortfolio.portfolioValue,
       totalPnL: freqTradePortfolio.totalPnL,
-      connected: freqTradeConnected
+      connected: freqTradeConnected,
     });
   }
   const hasBotsData = freqTradeBots.length > 0;
-  const freqTradeRecentTrades: any[] = []; // Will be updated when trade data is available
+  // Note: Live trading positions now displayed directly from freqTradeBots array
+  // This provides real-time bot status, balance, and P&L data similar to streaming client
   const freqTradePortfolioHistory: any[] = []; // Chart data now handled differently
 
   // Bot control functions (placeholder - will be implemented with SSE service)
   const startBot = useCallback(async (botId: string) => {
-    console.log(`🤖 Start bot requested: ${botId} (not yet implemented in SSE service)`);
+    console.log(
+      `🤖 Start bot requested: ${botId} (not yet implemented in SSE service)`
+    );
     // TODO: Implement bot start functionality
   }, []);
 
   const stopBot = useCallback(async (botId: string) => {
-    console.log(`🤖 Stop bot requested: ${botId} (not yet implemented in SSE service)`);
+    console.log(
+      `🤖 Stop bot requested: ${botId} (not yet implemented in SSE service)`
+    );
     // TODO: Implement bot stop functionality
   }, []);
 
   const updateBotConfig = useCallback(async (botId: string, config: any) => {
-    console.log(`🤖 Bot config update requested: ${botId}`, config, "(not yet implemented in SSE service)");
+    console.log(
+      `🤖 Bot config update requested: ${botId}`,
+      config,
+      "(not yet implemented in SSE service)"
+    );
     // TODO: Implement bot config update functionality
   }, []);
 
   // Helper function to safely update portfolio data for a specific timeframe
-  const updatePortfolioDataForTimeframe = useCallback((timeframe: "1H" | "24H" | "7D" | "30D", data: any[]) => {
-    console.log(`📊 🔄 Storing portfolio data for ${timeframe}: ${data.length} points (isolated)`);
-    
-    setPortfolioDataByTimeframe(prev => ({
-      ...prev,
-      [timeframe]: data
-    }));
-    
-    console.log(`📊 📦 Data stored for ${timeframe}, completely isolated from other timeframes`);
-  }, []);
+  const updatePortfolioDataForTimeframe = useCallback(
+    (timeframe: "1H" | "24H" | "7D" | "30D", data: any[]) => {
+      console.log(
+        `📊 🔄 Storing portfolio data for ${timeframe}: ${data.length} points (isolated)`
+      );
+
+      setPortfolioDataByTimeframe((prev) => ({
+        ...prev,
+        [timeframe]: data,
+      }));
+
+      console.log(
+        `📊 📦 Data stored for ${timeframe}, completely isolated from other timeframes`
+      );
+    },
+    []
+  );
 
   // Helper function to get data for current timeframe
   const getCurrentTimeframeData = useCallback(() => {
     const data = portfolioDataByTimeframe[portfolioDateRange] || [];
+    console.log(
+      `📊 🔍 getCurrentTimeframeData for ${portfolioDateRange}:`,
+      data.length,
+      "points"
+    );
+    console.log(
+      `📊 🔍 All timeframes available:`,
+      Object.keys(portfolioDataByTimeframe)
+    );
+    console.log(
+      `📊 🔍 Data for each timeframe:`,
+      Object.entries(portfolioDataByTimeframe).map(([key, value]) => ({
+        [key]: value.length,
+      }))
+    );
+    console.log(`📊 🔍 FreqTrade connected:`, freqTradeConnected);
+    console.log(
+      `📊 🔍 FreqTrade portfolio:`,
+      freqTradePortfolio ? `$${freqTradePortfolio.portfolioValue}` : "null"
+    );
+
+    if (data.length > 0) {
+      console.log(`📊 🔍 Sample chart points:`, data.slice(0, 2));
+      console.log(`📊 🔍 Last chart point:`, data[data.length - 1]);
+    } else {
+      console.log(`📊 🔍 ❌ NO CHART DATA AVAILABLE FOR ${portfolioDateRange}`);
+    }
     return data;
-  }, [portfolioDataByTimeframe, portfolioDateRange]);
+  }, [
+    portfolioDataByTimeframe,
+    portfolioDateRange,
+    freqTradeConnected,
+    freqTradePortfolio,
+  ]);
+
+  // Create emergency fallback chart data if needed
+  const getChartDataWithFallback = useCallback(() => {
+    const data = getCurrentTimeframeData();
+
+    // If we have chart data, return it
+    if (data.length > 0) {
+      console.log(
+        `📊 💚 Returning ${data.length} chart points from portfolioDataByTimeframe`
+      );
+      return data;
+    }
+
+    // If we have portfolio data but no chart data, create a minimal chart point
+    if (
+      freqTradeConnected &&
+      freqTradePortfolio &&
+      freqTradePortfolio.portfolioValue > 0
+    ) {
+      console.log(
+        `📊 🔄 Creating emergency fallback chart point from live portfolio data`
+      );
+      const fallbackPoint = {
+        timestamp: new Date(freqTradePortfolio.timestamp),
+        date: new Date(freqTradePortfolio.timestamp),
+        portfolioValue: freqTradePortfolio.portfolioValue,
+        totalPnL: freqTradePortfolio.totalPnL,
+        totalValue: freqTradePortfolio.portfolioValue,
+        value: freqTradePortfolio.portfolioValue,
+        paperBalance: freqTradePortfolio.totalPnL,
+        total: freqTradePortfolio.portfolioValue,
+        pnlPercentage: freqTradePortfolio.pnlPercentage || 0,
+        _emergencyFallback: true,
+      };
+
+      console.log(`📊 🔄 Emergency fallback point created:`, fallbackPoint);
+      return [fallbackPoint];
+    }
+
+    console.log(`📊 ❌ No chart data available - returning empty array`);
+    return [];
+  }, [getCurrentTimeframeData, freqTradeConnected, freqTradePortfolio]);
 
   // Determine if user is new based on portfolio data availability
   const isNewUser =
-    !freqTradeConnected || !freqTradePortfolio || getCurrentTimeframeData().length === 0;
+    !freqTradeConnected ||
+    !freqTradePortfolio ||
+    getChartDataWithFallback().length === 0;
 
   // Use a ref for the currently selected currency so that the WS handler always sees the latest value
   const selectedCurrencyRef = useRef<string>("BTC");
@@ -322,7 +418,7 @@ export default function Dashboard() {
   const currentTimeframeRequestRef = useRef<string | null>(null);
 
   // Chart now gets data directly from getCurrentTimeframeData() - no need for syncing useEffect
-  
+
   // Zoom/Pan states
   const [zoomState, setZoomState] = useState<{
     xDomain?: [number, number];
@@ -1156,8 +1252,12 @@ export default function Dashboard() {
   const fetchPortfolioChartData = useCallback(
     async (timeframe: "1H" | "24H" | "7D" | "30D") => {
       setPortfolioChartLoading(true);
-      console.log(`📈 fetchPortfolioChartData called for timeframe: ${timeframe}`);
-      console.log(`🔄 Current timeframe data length: ${getCurrentTimeframeData().length}`);
+      console.log(
+        `📈 fetchPortfolioChartData called for timeframe: ${timeframe}`
+      );
+      console.log(
+        `🔄 Current timeframe data length: ${getCurrentTimeframeData().length}`
+      );
 
       // Track the current request to prevent race conditions
       currentTimeframeRequestRef.current = timeframe;
@@ -1165,26 +1265,40 @@ export default function Dashboard() {
       try {
         // Use SSE-based chart data fetching
         if (freqTradeConnected) {
-          console.log(`🔄 FreqTrade SSE connected, fetching chart data for ${timeframe}`);
-          
+          console.log(
+            `🔄 FreqTrade SSE connected, fetching chart data for ${timeframe}`
+          );
+
           // Map timeframe format to API format
-          const apiTimeframe = timeframe === "1H" ? "1h" : 
-                              timeframe === "24H" ? "24h" :
-                              timeframe === "7D" ? "7d" : "30d";
+          const apiTimeframe =
+            timeframe === "1H"
+              ? "1h"
+              : timeframe === "24H"
+              ? "24h"
+              : timeframe === "7D"
+              ? "7d"
+              : "30d";
 
           // Check if we already have data for this timeframe
           const existingData = freqTradeChartData?.[apiTimeframe];
-          if (existingData && existingData.data && existingData.data.length > 0) {
-            console.log(`� Using existing chart data for ${timeframe}: ${existingData.data.length} points`);
-            
+          if (
+            existingData &&
+            existingData.data &&
+            existingData.data.length > 0
+          ) {
+            console.log(
+              `� Using existing chart data for ${timeframe}: ${existingData.data.length} points`
+            );
+
             // Transform SSE chart data to internal format
             const transformedData = existingData.data.map((point: any) => ({
               timestamp: new Date(point.timestamp),
               portfolioValue: point.portfolioValue,
               totalPnL: point.totalPnL,
-              pnlPercentage: point.totalPnL / (point.portfolioValue - point.totalPnL),
+              pnlPercentage:
+                point.totalPnL / (point.portfolioValue - point.totalPnL),
             }));
-            
+
             updatePortfolioDataForTimeframe(timeframe, transformedData);
             setPortfolioChartLoading(false);
             return;
@@ -1192,19 +1306,23 @@ export default function Dashboard() {
 
           // Fetch new chart data from SSE service
           console.log(`📈 Fetching fresh chart data for ${apiTimeframe}...`);
-          await fetchFreqTradeChartData(apiTimeframe as '1h' | '24h' | '7d' | '30d');
-          
+          await fetchFreqTradeChartData(
+            apiTimeframe as "1h" | "24h" | "7d" | "30d"
+          );
+
           // Data will be updated via the chart data effect hook
         } else {
-          console.log(`📊 FreqTrade not connected, no data available for ${timeframe}`);
-          
+          console.log(
+            `📊 FreqTrade not connected, no data available for ${timeframe}`
+          );
+
           // Clear any existing data and show data unavailable state
           updatePortfolioDataForTimeframe(timeframe, []);
           setPortfolioChartLoading(false);
         }
       } catch (error) {
         console.error("Error fetching portfolio chart data:", error);
-        
+
         // Clear data on error - no fallback mock data
         updatePortfolioDataForTimeframe(timeframe, []);
         setPortfolioChartLoading(false);
@@ -1220,40 +1338,121 @@ export default function Dashboard() {
 
   // Handle chart data updates from SSE service
   useEffect(() => {
+    console.log(`📊 ===== CHART DATA EFFECT FOR ${portfolioDateRange} =====`);
+    console.log(`📊 FreqTrade connected:`, freqTradeConnected);
+    console.log(`📊 FreqTrade portfolio:`, freqTradePortfolio);
+    console.log(`📊 FreqTrade chart data:`, freqTradeChartData);
+    console.log(
+      `📊 FreqTrade chart data keys:`,
+      Object.keys(freqTradeChartData || {})
+    );
+
     if (!freqTradeChartData || Object.keys(freqTradeChartData).length === 0) {
+      console.log(
+        `📊 ❌ No FreqTrade chart data available yet - exiting early`
+      );
+
+      // If we have portfolio data but no chart data, let's create a simple fallback point
+      if (
+        freqTradeConnected &&
+        freqTradePortfolio &&
+        freqTradePortfolio.portfolioValue > 0
+      ) {
+        console.log(
+          `📊 🔄 Creating emergency fallback chart data from portfolio`
+        );
+        const fallbackPoint = {
+          timestamp: new Date(freqTradePortfolio.timestamp),
+          date: new Date(freqTradePortfolio.timestamp),
+          portfolioValue: freqTradePortfolio.portfolioValue,
+          totalPnL: freqTradePortfolio.totalPnL,
+          totalValue: freqTradePortfolio.portfolioValue,
+          value: freqTradePortfolio.portfolioValue,
+          paperBalance: freqTradePortfolio.totalPnL,
+          total: freqTradePortfolio.portfolioValue,
+          pnlPercentage: freqTradePortfolio.pnlPercentage,
+          _fallback: true,
+        };
+        console.log(`📊 🔄 Emergency fallback point:`, fallbackPoint);
+        updatePortfolioDataForTimeframe(portfolioDateRange, [fallbackPoint]);
+      }
+
+      setPortfolioChartLoading(false);
       return;
     }
-    
+
     // Check if we have data for the current timeframe
-    const apiTimeframe = portfolioDateRange === "1H" ? "1h" : 
-                        portfolioDateRange === "24H" ? "24h" :
-                        portfolioDateRange === "7D" ? "7d" : "30d";
-    
+    const apiTimeframe =
+      portfolioDateRange === "1H"
+        ? "1h"
+        : portfolioDateRange === "24H"
+        ? "24h"
+        : portfolioDateRange === "7D"
+        ? "7d"
+        : "30d";
+
     const chartDataForTimeframe = freqTradeChartData[apiTimeframe];
-    
-    if (chartDataForTimeframe && chartDataForTimeframe.data && chartDataForTimeframe.data.length > 0) {
+    console.log(`📊 Chart data for ${apiTimeframe}:`, chartDataForTimeframe);
+
+    if (
+      chartDataForTimeframe &&
+      chartDataForTimeframe.data &&
+      chartDataForTimeframe.data.length > 0
+    ) {
+      console.log(
+        `📊 ✅ Processing ${chartDataForTimeframe.data.length} chart points for ${apiTimeframe}`
+      );
+      console.log(`📊 First point sample:`, chartDataForTimeframe.data[0]);
+
       // Transform SSE chart data to internal format
-      const transformedData = chartDataForTimeframe.data.map((point: any) => ({
-        timestamp: new Date(point.timestamp),
-        date: new Date(point.timestamp), // Chart expects 'date' field
-        portfolioValue: point.portfolioValue,
-        totalPnL: point.totalPnL,
-        // Chart component expects these specific fields:
-        totalValue: point.portfolioValue, // Chart looks for 'totalValue' or 'value'
-        value: point.portfolioValue, // No fallback value
-        paperBalance: 0, // Not used in FreqTrade but expected by chart
-        total: point.portfolioValue, // This is what actually gets displayed
-        pnlPercentage: point.totalPnL / Math.max(point.portfolioValue - point.totalPnL, 1), // Avoid division by zero
-      }));
-      
+      const transformedData = chartDataForTimeframe.data.map(
+        (point: any, index: number) => {
+          const transformed = {
+            timestamp: new Date(point.timestamp),
+            date: new Date(point.timestamp), // Chart expects 'date' field
+            portfolioValue: point.portfolioValue,
+            totalPnL: point.totalPnL,
+            // Chart component expects these specific fields:
+            totalValue: point.portfolioValue, // Chart looks for 'totalValue' or 'value'
+            value: point.portfolioValue, // Backup field
+            paperBalance: point.totalPnL, // Use PnL as paper balance
+            total: point.portfolioValue, // This is what actually gets displayed
+            pnlPercentage:
+              point.totalPnL /
+              Math.max(point.portfolioValue - point.totalPnL, 1), // Avoid division by zero
+            _fromSSE: true, // Mark as SSE data
+            _index: index,
+          };
+          if (index === 0) {
+            console.log(`📊 Sample transformed point:`, transformed);
+          }
+          return transformed;
+        }
+      );
+
+      console.log(
+        `📊 ✅ Transformed ${transformedData.length} points, storing for timeframe ${portfolioDateRange}`
+      );
+      console.log(
+        `📊 ✅ Calling updatePortfolioDataForTimeframe with ${transformedData.length} points`
+      );
       updatePortfolioDataForTimeframe(portfolioDateRange, transformedData);
       setPortfolioChartLoading(false);
     } else {
-      // Live portfolio fallback chart data disabled - no mock data, only show data unavailable state
-      console.log('📊 Live portfolio fallback disabled - showing data unavailable if no chart data');
+      console.log(`📊 ❌ No chart data points available for ${apiTimeframe}`);
       setPortfolioChartLoading(false);
     }
-  }, [freqTradeChartData, portfolioDateRange, updatePortfolioDataForTimeframe, freqTradeConnected, freqTradePortfolio]);
+
+    console.log(`📊 ===== END CHART DATA EFFECT =====`);
+  }, [
+    freqTradeChartData,
+    portfolioDateRange,
+    updatePortfolioDataForTimeframe,
+    freqTradeConnected,
+    freqTradePortfolio,
+  ]);
+
+  // Chart data is now handled in the SSE hook directly - removed duplicate logic
 
   // Main refresh function
   const handleRefresh = useCallback(async () => {
@@ -1264,10 +1463,10 @@ export default function Dashboard() {
       // Refresh crypto price data
       const ticker = await fetchTickerDataForCurrency(selectedCurrency);
       setCryptoData(ticker);
-      
+
       // Refresh FreqTrade SSE data
       await refreshFreqTradeData();
-      
+
       // Refresh current portfolio chart data
       await fetchPortfolioChartData(portfolioDateRange);
 
@@ -1277,77 +1476,95 @@ export default function Dashboard() {
       setError(err?.message || "Failed to refresh data");
       setLoading(false);
     }
-  }, [fetchTickerDataForCurrency, selectedCurrency, refreshFreqTradeData, fetchPortfolioChartData, portfolioDateRange]);
+  }, [
+    fetchTickerDataForCurrency,
+    selectedCurrency,
+    refreshFreqTradeData,
+    fetchPortfolioChartData,
+    portfolioDateRange,
+  ]);
 
   // Helper function to generate fallback chart data
   // Fallback data generation disabled - return empty array
-  const generateFallbackChartData = (timeframe: string, currentValue: number, currentPnL: number) => {
-    console.log(`📊 Fallback data disabled for ${timeframe} - showing data unavailable`);
+  const generateFallbackChartData = (
+    timeframe: string,
+    currentValue: number,
+    currentPnL: number
+  ) => {
+    console.log(
+      `📊 Fallback data disabled for ${timeframe} - showing data unavailable`
+    );
     return [];
   };
-  
-  const generateFallbackChartData_DISABLED = (timeframe: string, currentValue: number, currentPnL: number) => {
+
+  const generateFallbackChartData_DISABLED = (
+    timeframe: string,
+    currentValue: number,
+    currentPnL: number
+  ) => {
     const now = new Date();
     const points = [];
     let intervals = 10;
     let intervalMs = 60 * 60 * 1000;
     let baseVariation = 0.02;
-    
+
     // Adjust parameters based on timeframe for accurate time ranges
     switch (timeframe) {
-      case '1H':
+      case "1H":
         intervals = 12; // 12 points over 1 hour
         intervalMs = 5 * 60 * 1000; // 5 minutes each
         baseVariation = 0.005; // Very small variations for 1H
         break;
-      case '24H':
-        intervals = 24; // 24 points over 24 hours  
+      case "24H":
+        intervals = 24; // 24 points over 24 hours
         intervalMs = 60 * 60 * 1000; // 1 hour each
         baseVariation = 0.02; // Small variations for 24H
         break;
-      case '7D':
+      case "7D":
         intervals = 14; // 14 points over 7 days
         intervalMs = 12 * 60 * 60 * 1000; // 12 hours each
         baseVariation = 0.04; // Medium variations for 7D
         break;
-      case '30D':
+      case "30D":
         intervals = 30; // 30 points over 30 days
         intervalMs = 24 * 60 * 60 * 1000; // 1 day each
         baseVariation = 0.06; // Larger variations for 30D
         break;
     }
-    
+
     // Use timeframe as seed for consistent but different patterns
     const seed = timeframe.charCodeAt(0) + timeframe.charCodeAt(1);
-    
+
     for (let i = intervals - 1; i >= 0; i--) {
-      const timestamp = new Date(now.getTime() - (i * intervalMs));
-      
+      const timestamp = new Date(now.getTime() - i * intervalMs);
+
       // Create distinctly different trend patterns for different timeframes
       let trendFactor = 0;
-      if (timeframe === '1H') {
+      if (timeframe === "1H") {
         // Very subtle upward trend with micro fluctuations
         trendFactor = Math.sin(i * 0.8) * 0.003 + (intervals - i) * 0.0001;
-      } else if (timeframe === '24H') {
+      } else if (timeframe === "24H") {
         // Strong sine wave pattern - dramatically different
         trendFactor = Math.sin(i * 0.4) * 0.05 + Math.cos(i * 0.8) * 0.02;
-      } else if (timeframe === '7D') {
+      } else if (timeframe === "7D") {
         // Strong sawtooth pattern - very distinctive
-        trendFactor = (i % 3 === 0 ? 0.08 : i % 5 === 0 ? -0.06 : -0.01);
+        trendFactor = i % 3 === 0 ? 0.08 : i % 5 === 0 ? -0.06 : -0.01;
       } else {
         // Strong linear growth trend - clearly different
-        trendFactor = (i - intervals/2) * 0.005 + Math.sin(i * 0.1) * 0.03;
+        trendFactor = (i - intervals / 2) * 0.005 + Math.sin(i * 0.1) * 0.03;
       }
-      
+
       // Deterministic variation with timeframe-specific seed
       const randomSeed = (seed + i) * 9301;
       const pseudoRandom = (randomSeed % 233280) / 233280;
       const variation = (pseudoRandom - 0.5) * baseVariation;
-      
+
       const totalVariation = trendFactor + variation;
-      const value = i === 0 ? currentValue : currentValue * (1 + totalVariation);
-      const pnl = i === 0 ? currentPnL : currentPnL * (1 + totalVariation * 0.5);
-      
+      const value =
+        i === 0 ? currentValue : currentValue * (1 + totalVariation);
+      const pnl =
+        i === 0 ? currentPnL : currentPnL * (1 + totalVariation * 0.5);
+
       points.push({
         timestamp: timestamp,
         date: timestamp,
@@ -1359,22 +1576,46 @@ export default function Dashboard() {
         _timeframe: timeframe,
       });
     }
-    
-    console.log(`📊 Generated fallback data for ${timeframe}: ${points.length} points from ${points[0]?.timestamp.toISOString()} to ${points[points.length-1]?.timestamp.toISOString()}`);
-    console.log(`📊 Time span check - Expected: ${timeframe}, Actual span: ${(points[points.length-1]?.timestamp.getTime() - points[0]?.timestamp.getTime()) / (1000 * 60)} minutes`);
-    console.log(`📊 First few data points for ${timeframe}:`, points.slice(0, 3).map(p => ({ timestamp: p.timestamp.toISOString(), total: p.total.toFixed(2) })));
-    console.log(`📊 Data generation ID: ${timeframe}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
-    
+
+    console.log(
+      `📊 Generated fallback data for ${timeframe}: ${
+        points.length
+      } points from ${points[0]?.timestamp.toISOString()} to ${points[
+        points.length - 1
+      ]?.timestamp.toISOString()}`
+    );
+    console.log(
+      `📊 Time span check - Expected: ${timeframe}, Actual span: ${
+        (points[points.length - 1]?.timestamp.getTime() -
+          points[0]?.timestamp.getTime()) /
+        (1000 * 60)
+      } minutes`
+    );
+    console.log(
+      `📊 First few data points for ${timeframe}:`,
+      points.slice(0, 3).map((p) => ({
+        timestamp: p.timestamp.toISOString(),
+        total: p.total.toFixed(2),
+      }))
+    );
+    console.log(
+      `📊 Data generation ID: ${timeframe}-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`
+    );
+
     return points;
   };
 
   // Helper function to generate mock chart data for demo
   // Mock data generation removed - function disabled
   const generateMockChartData = (timeframe: string) => {
-    console.log(`📊 Mock data disabled for ${timeframe} - showing data unavailable`);
+    console.log(
+      `📊 Mock data disabled for ${timeframe} - showing data unavailable`
+    );
     return [];
   };
-  
+
   const generateMockChartData_DISABLED = (timeframe: string) => {
     const now = new Date();
     const points = [];
@@ -1382,61 +1623,64 @@ export default function Dashboard() {
     let intervalMs = 60 * 60 * 1000;
     let baseVariation = 0.02;
     const baseValue = 29700; // Mock portfolio value
-    
+
     // Adjust parameters based on timeframe for accurate time ranges
     switch (timeframe) {
-      case '1H':
+      case "1H":
         intervals = 12; // 12 points over 1 hour
         intervalMs = 5 * 60 * 1000; // 5 minutes each
         baseVariation = 0.005; // Very small variations for 1H
         break;
-      case '24H':
-        intervals = 24; // 24 points over 24 hours  
+      case "24H":
+        intervals = 24; // 24 points over 24 hours
         intervalMs = 60 * 60 * 1000; // 1 hour each
         baseVariation = 0.02; // Small variations for 24H
         break;
-      case '7D':
+      case "7D":
         intervals = 14; // 14 points over 7 days
         intervalMs = 12 * 60 * 60 * 1000; // 12 hours each
         baseVariation = 0.04; // Medium variations for 7D
         break;
-      case '30D':
+      case "30D":
         intervals = 30; // 30 points over 30 days
         intervalMs = 24 * 60 * 60 * 1000; // 1 day each
         baseVariation = 0.06; // Larger variations for 30D
         break;
     }
-    
+
     // Use timeframe as seed for consistent but different patterns (offset by 100 from fallback)
     const seed = timeframe.charCodeAt(0) + timeframe.charCodeAt(1) + 100;
-    
+
     for (let i = intervals - 1; i >= 0; i--) {
-      const timestamp = new Date(now.getTime() - (i * intervalMs));
-      
+      const timestamp = new Date(now.getTime() - i * intervalMs);
+
       // Create different trend patterns for different timeframes
       let trendFactor = 0;
-      if (timeframe === '1H') {
+      if (timeframe === "1H") {
         trendFactor = Math.sin(i * 1.2) * 0.002; // Gentle wave for 1H, different from fallback
-      } else if (timeframe === '24H') {
+      } else if (timeframe === "24H") {
         // Very dramatic zigzag pattern for 24H
-        trendFactor = (i % 2 === 0 ? 0.1 : -0.08);
-      } else if (timeframe === '7D') {
+        trendFactor = i % 2 === 0 ? 0.1 : -0.08;
+      } else if (timeframe === "7D") {
         // Exponential growth pattern for 7D
         trendFactor = Math.pow(1.02, intervals - i) - 1;
       } else {
         // Strong declining then rising pattern for 30D
-        trendFactor = i < intervals/2 ? -(intervals/2 - i) * 0.01 : (i - intervals/2) * 0.015;
+        trendFactor =
+          i < intervals / 2
+            ? -(intervals / 2 - i) * 0.01
+            : (i - intervals / 2) * 0.015;
       }
-      
+
       // Deterministic variation with timeframe-specific seed (not random)
       const randomSeed = (seed + i) * 9301;
       const pseudoRandom = (randomSeed % 233280) / 233280;
       const variation = (pseudoRandom - 0.5) * baseVariation;
-      
+
       const totalVariation = trendFactor + variation;
       const value = i === 0 ? baseValue : baseValue * (1 + totalVariation);
       const pnl = value * 0.02 * (pseudoRandom - 0.3); // Deterministic PnL variation
-      
+
       points.push({
         timestamp: timestamp,
         date: timestamp,
@@ -1448,20 +1692,46 @@ export default function Dashboard() {
         _timeframe: timeframe,
       });
     }
-    
-    console.log(`📊 Generated mock data for ${timeframe}: ${points.length} points from ${points[0]?.timestamp.toISOString()} to ${points[points.length-1]?.timestamp.toISOString()}`);
-    console.log(`📊 Mock data time span: ${((points[points.length-1]?.timestamp.getTime() - points[0]?.timestamp.getTime()) / (1000 * 60)).toFixed(1)} minutes`);
-    console.log(`📊 First few mock data points for ${timeframe}:`, points.slice(0, 3).map(p => ({ timestamp: p.timestamp.toISOString(), total: p.total.toFixed(2) })));
-    console.log(`📊 Mock data generation ID: ${timeframe}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
-    
+
+    console.log(
+      `📊 Generated mock data for ${timeframe}: ${
+        points.length
+      } points from ${points[0]?.timestamp.toISOString()} to ${points[
+        points.length - 1
+      ]?.timestamp.toISOString()}`
+    );
+    console.log(
+      `📊 Mock data time span: ${(
+        (points[points.length - 1]?.timestamp.getTime() -
+          points[0]?.timestamp.getTime()) /
+        (1000 * 60)
+      ).toFixed(1)} minutes`
+    );
+    console.log(
+      `📊 First few mock data points for ${timeframe}:`,
+      points.slice(0, 3).map((p) => ({
+        timestamp: p.timestamp.toISOString(),
+        total: p.total.toFixed(2),
+      }))
+    );
+    console.log(
+      `📊 Mock data generation ID: ${timeframe}-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`
+    );
+
     return points;
   };
 
   useEffect(() => {
-    console.log(`📊 Portfolio timeframe changed to: ${portfolioDateRange}, current ref: ${currentTimeframeRequestRef.current}`);
-    
+    console.log(
+      `📊 Portfolio timeframe changed to: ${portfolioDateRange}, current ref: ${currentTimeframeRequestRef.current}`
+    );
+
     // Always fetch data when timeframe changes to ensure fresh data
-    console.log(`📊 Forcing new data fetch for timeframe: ${portfolioDateRange}`);
+    console.log(
+      `📊 Forcing new data fetch for timeframe: ${portfolioDateRange}`
+    );
     fetchPortfolioChartData(portfolioDateRange);
   }, [portfolioDateRange, fetchPortfolioChartData]);
 
@@ -1471,15 +1741,21 @@ export default function Dashboard() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (portfolioChartLoading) {
-        console.log(`📊 Safety timeout: Clearing stuck loading state for ${portfolioDateRange}`);
+        console.log(
+          `📊 Safety timeout: Clearing stuck loading state for ${portfolioDateRange}`
+        );
         setPortfolioChartLoading(false);
-        
+
         // No fallback data - leave empty if no data available
         const currentData = getCurrentTimeframeData();
         if (currentData.length === 0) {
-          console.log(`📊 No data available for ${portfolioDateRange} - showing data unavailable state`);
+          console.log(
+            `📊 No data available for ${portfolioDateRange} - showing data unavailable state`
+          );
         } else {
-          console.log(`📊 Data exists for ${portfolioDateRange}, keeping existing data`);
+          console.log(
+            `📊 Data exists for ${portfolioDateRange}, keeping existing data`
+          );
         }
       }
     }, 8000);
@@ -1641,6 +1917,27 @@ export default function Dashboard() {
           @keyframes glow {
             0%, 100% { text-shadow: 0 0 10px rgba(129, 161, 255, 0.7), 0 0 20px rgba(129, 161, 255, 0.5), 0 0 30px rgba(129, 161, 255, 0.3); }
             50% { text-shadow: 0 0 15px rgba(129, 161, 255, 0.9), 0 0 25px rgba(129, 161, 255, 0.7), 0 0 35px rgba(129, 161, 255, 0.5); }
+          }
+          @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+          }
+          .animate-blink {
+            animation: blink 1.5s infinite;
+          }
+          .price-change {
+            animation: highlightGreen 2s ease-in-out;
+          }
+          .pnl-change {
+            animation: highlightBlue 2s ease-in-out;
+          }
+          @keyframes highlightGreen {
+            0% { background-color: rgba(40,167,69,0.4); }
+            100% { background-color: transparent; }
+          }
+          @keyframes highlightBlue {
+            0% { background-color: rgba(0,123,255,0.4); }
+            100% { background-color: transparent; }
           }
           .alien-text {
             font-family: "Space Mono", monospace;
@@ -2355,9 +2652,9 @@ export default function Dashboard() {
                 >
                   <ModeToggle className="mobile-tray-icon-button bg-transparent border-black/20 dark:border-white/20 text-black/90 dark:text-white/90 hover:bg-black/10 dark:hover:bg-white/10" />
                 </div>
-              </div>
-            </div>
-          )}
+                            </div>
+                          </div>
+                        )}
 
           {/* Mobile Title Section - Below the tray */}
           {isMobile && (
@@ -2483,7 +2780,9 @@ export default function Dashboard() {
                         )}
                       />
                       <span className="text-muted-foreground">
-                        {freqTradeConnected ? "FreqTrade Connected" : "FreqTrade Disconnected"}
+                        {freqTradeConnected
+                          ? "FreqTrade Connected"
+                          : "FreqTrade Disconnected"}
                       </span>
                     </div>
                   </div>
@@ -2506,12 +2805,21 @@ export default function Dashboard() {
                           <p className="text-muted-foreground">Balance</p>
                           <p className="text-lg font-semibold sm:mt-1">
                             {freqTradeConnected && freqTradePortfolio ? (
-                              formatCurrency(
-                                freqTradePortfolio.totalBalance || 0
-                              )
+                              <>
+                                {formatCurrency(
+                                  freqTradePortfolio.totalBalance || 0
+                                )}
+                                <span className="text-xs text-green-500 block">
+                                  Live: {freqTradePortfolio.bots?.length || 0}{" "}
+                                  bots
+                                </span>
+                              </>
                             ) : (
                               <span className="text-muted-foreground">
                                 Data unavailable
+                                <span className="text-xs block">
+                                  Connected: {freqTradeConnected ? "Yes" : "No"}
+                                </span>
                               </span>
                             )}
                           </p>
@@ -2534,11 +2842,11 @@ export default function Dashboard() {
                             <p className="text-xs text-muted-foreground">
                               Data unavailable
                             </p>
-                          ) : freqTradeRecentTrades?.length > 0 ? (
+                          ) : freqTradeBots?.length > 0 ? (
                             <div className="space-y-1">
                               <div className="flex justify-between text-xs">
-                                <span>Recent Trades</span>
-                                <span>{freqTradeRecentTrades.length}</span>
+                                <span>Live Positions</span>
+                                <span>{freqTradeBots.length}</span>
                               </div>
                               <p className="text-xs text-green-500">
                                 Live from FreqTrade
@@ -2590,12 +2898,12 @@ export default function Dashboard() {
                             <p className="text-sm text-muted-foreground sm:mt-1">
                               Data unavailable
                             </p>
-                          ) : freqTradeRecentTrades?.length > 0 ? (
+                          ) : freqTradeBots?.length > 0 ? (
                             <div className="text-right sm:text-left sm:mt-1">
                               <div className="space-y-1 sm:space-y-1">
                                 <div className="flex justify-between text-xs sm:justify-between">
-                                  <span>Recent Trades</span>
-                                  <span>{freqTradeRecentTrades.length}</span>
+                                  <span>Live Positions</span>
+                                  <span>{freqTradeBots.length}</span>
                                 </div>
                                 <p className="text-xs text-green-500">
                                   Live from FreqTrade
@@ -2617,6 +2925,9 @@ export default function Dashboard() {
                       <div className="flex justify-between items-center mb-3">
                         <h4 className="text-sm font-medium text-muted-foreground">
                           Portfolio Value
+                          <span className="text-xs text-blue-500 ml-2">
+                            ({getChartDataWithFallback().length} pts)
+                          </span>
                         </h4>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -2703,8 +3014,10 @@ export default function Dashboard() {
                         ) : (
                           <div className="w-full h-full overflow-visible">
                             <PortfolioChart
-                              key={`portfolio-chart-${portfolioDateRange}-${getCurrentTimeframeData().length}`}
-                              data={getCurrentTimeframeData()}
+                              key={`portfolio-chart-${portfolioDateRange}-${
+                                getChartDataWithFallback().length
+                              }`}
+                              data={getChartDataWithFallback()}
                               timeframe={portfolioDateRange}
                               isMobile={isMobile}
                             />
@@ -3641,7 +3954,7 @@ export default function Dashboard() {
               </Card>
             </div>
           </div>
-          {/* Row 3: Quick Trade, Recent Trades, Bot Roadmap, News/Tips */}
+          {/* Row 3: Quick Trade, Live Trading Positions, Bot Roadmap, News/Tips */}
           <div
             className={cn(
               "grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-4",
@@ -3676,11 +3989,19 @@ export default function Dashboard() {
                       </div>
                     ) : freqTradeBots.length > 0 ? (
                       <div className="space-y-3">
-                        {freqTradeBots.slice(0, 3).map((bot) => (
-                          <div
-                            key={bot.instanceId}
-                            className="flex items-center justify-between p-2 border rounded-lg"
-                          >
+                        {freqTradeBots.slice(0, 3).map((bot, debugIndex) => {
+                          // Debug logging to see the actual data structure
+                          if (debugIndex === 0) {
+                            console.log('🐛 Debug bot data structure:', bot);
+                            console.log('🐛 Bot keys:', Object.keys(bot));
+                            console.log('🐛 Bot instanceId type:', typeof bot.instanceId, bot.instanceId);
+                            console.log('🐛 Bot status type:', typeof bot.status, bot.status);
+                          }
+                          return (
+                            <div
+                              key={bot.instanceId}
+                              className="flex items-center justify-between p-2 border rounded-lg"
+                            >
                             <div className="flex items-center gap-2">
                               <div
                                 className={cn(
@@ -3693,12 +4014,15 @@ export default function Dashboard() {
                                 )}
                               />
                               <div>
-                                <p className="font-medium text-sm">{`Bot ${bot.instanceId}`}</p>
+                                <p className="font-medium text-sm">
+                                  {`Bot ${typeof bot.instanceId === 'string' ? bot.instanceId : 'Unknown'}`}
+                                </p>
                                 <p className="text-xs text-muted-foreground capitalize">
-                                  {Array.isArray(bot.status) 
+                                  {Array.isArray(bot.status)
                                     ? `${bot.status.length} active trades`
-                                    : bot.status || 'Inactive'
-                                  }
+                                    : typeof bot.status === 'string' 
+                                    ? bot.status 
+                                    : "Inactive"}
                                 </p>
                               </div>
                             </div>
@@ -3724,7 +4048,8 @@ export default function Dashboard() {
                               )}
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                         {freqTradeBots.length > 3 && (
                           <p className="text-xs text-muted-foreground text-center">
                             +{freqTradeBots.length - 3} more bots
@@ -3823,13 +4148,29 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </div>
-            {/* RIGHT COLUMN: Recent Trades + News/Tips */}
+            {/* RIGHT COLUMN: Live Trading Positions + News/Tips */}
             <div className="flex flex-col gap-4">
               <Card>
                 <CardHeader className="p-3 sm:p-4 pb-0">
                   <CardTitle className="text-base sm:text-lg">
-                    Recent Trades
+                    Live Trading Positions
                   </CardTitle>
+                  {freqTradeConnected && (
+                    <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md p-2 mb-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                          🔴 LIVE DATA CONFIRMED
+                        </span>
+                      </div>
+                      <div className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
+                        <div>✅ <strong>Live Price Feeds:</strong> Real market prices updating</div>
+                        <div>✅ <strong>Live P&L:</strong> Profits/losses recalculated dynamically</div>
+                        <div>⚠️ <strong>Dry-Run Mode:</strong> Simulated trades with live data</div>
+                        <div>🕒 <strong>Update Freq:</strong> Every 5 seconds | <strong>Last:</strong> {freqTradeLastUpdate ? new Date(freqTradeLastUpdate).toLocaleTimeString() : 'Never'}</div>
+                      </div>
+                    </div>
+                  )}
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
@@ -3837,62 +4178,41 @@ export default function Dashboard() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="text-xs whitespace-nowrap">
-                            Time
+                            Bot
                           </TableHead>
                           <TableHead className="text-xs whitespace-nowrap">
-                            Action
+                            Pair
+                          </TableHead>
+                          <TableHead className="text-xs whitespace-nowrap">
+                            Side
                           </TableHead>
                           <TableHead className="text-xs text-right whitespace-nowrap">
                             Amount
                           </TableHead>
+                          <TableHead className="text-xs text-right whitespace-nowrap">
+                            Entry Price
+                          </TableHead>
+                          <TableHead className="text-xs text-right whitespace-nowrap">
+                            Current Price 📈
+                          </TableHead>
+                          <TableHead className="text-xs text-right whitespace-nowrap">
+                            Live P&L 💰
+                          </TableHead>
+                          <TableHead className="text-xs text-right whitespace-nowrap">
+                            P&L %
+                          </TableHead>
+                          <TableHead className="text-xs text-center whitespace-nowrap">
+                            Mode
+                          </TableHead>
+                          <TableHead className="text-xs text-center whitespace-nowrap">
+                            Last Change
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {freqTradeRecentTrades.length === 0 ? (
-                          <TableRow>
-                            <TableCell
-                              colSpan={5}
-                              className="text-center text-xs py-2"
-                            >
-                              {freqTradeConnected
-                                ? "No recent FreqTrade trades"
-                                : "Data unavailable"}
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          freqTradeRecentTrades
-                            .slice(0, 5)
-                            .map((trade, index) => (
-                              <TableRow key={trade.tradeId || index}>
-                                <TableCell className="text-xs py-2">
-                                  <span
-                                    className={
-                                      trade.side === "buy"
-                                        ? "text-green-600"
-                                        : "text-red-600"
-                                    }
-                                  >
-                                    {trade.side?.toUpperCase()}
-                                  </span>
-                                </TableCell>
-                                <TableCell className="text-xs py-2">
-                                  {trade.pair}
-                                </TableCell>
-                                <TableCell className="text-right text-xs py-2">
-                                  {trade.amount}
-                                </TableCell>
-                                <TableCell className="text-right text-xs py-2">
-                                  {formatCurrency(trade.price)}
-                                </TableCell>
-                                <TableCell className="text-right text-xs py-2">
-                                  {trade.timestamp ||
-                                    new Date(
-                                      trade.openDate
-                                    ).toLocaleTimeString()}
-                                </TableCell>
-                              </TableRow>
-                            ))
-                        )}
+                        <PositionsTable 
+                          isConnected={freqTradeConnected}
+                        />
                       </TableBody>
                     </Table>
                   </div>
