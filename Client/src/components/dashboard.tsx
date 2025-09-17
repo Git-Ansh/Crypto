@@ -83,6 +83,7 @@ import { AxiosError } from "axios";
 import { LoadingSpinner, InlineLoading } from "@/components/ui/loading";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PositionsTable } from "@/components/positions-table";
+import { StrategySelector } from "@/components/strategy-selector";
 
 // ================== CONFIG ENDPOINTS ==================
 // Replace the Coindesk/CC endpoints with Binance endpoints
@@ -479,11 +480,6 @@ export default function Dashboard() {
   const [selectedCurrencyName, setSelectedCurrencyName] =
     useState<string>("Bitcoin");
 
-  // Update selectedCurrencyRef when selectedCurrency changes
-  useEffect(() => {
-    selectedCurrencyRef.current = selectedCurrency;
-  }, [selectedCurrency]);
-
   // --- Portfolio & Bot State (now handled by FreqTrade integration) ---
   // Removed local portfolio state - using FreqTrade integration instead
   const [botActive, setBotActive] = useState<boolean>(true);
@@ -491,6 +487,37 @@ export default function Dashboard() {
 
   // Bot names state
   const [selectedBot, setSelectedBot] = useState<string>("Trading Bot Alpha");
+  const [selectedBotForStrategy, setSelectedBotForStrategy] = useState<string | null>(null);
+
+  // Helper function to safely get bot status as string
+  const getBotStatus = (bot: any): string => {
+    if (typeof bot.status === 'string') {
+      return bot.status;
+    } else if (Array.isArray(bot.status)) {
+      return 'running'; // If status is an array of trades, bot is likely running
+    } else {
+      return 'unknown';
+    }
+  };
+
+  // Helper function to check if bot is running
+  const isBotRunning = (bot: any): boolean => {
+    const status = getBotStatus(bot);
+    return status === 'running' || Array.isArray(bot.status);
+  };
+
+  // Update selectedBotForStrategy when FreqTrade bots are loaded
+  useEffect(() => {
+    if (freqTradeBots.length > 0 && !selectedBotForStrategy) {
+      setSelectedBotForStrategy(freqTradeBots[0].instanceId);
+      setSelectedBot(freqTradeBots[0].instanceId);
+    }
+  }, [freqTradeBots, selectedBotForStrategy]);
+
+  // Update selectedCurrencyRef when selectedCurrency changes
+  useEffect(() => {
+    selectedCurrencyRef.current = selectedCurrency;
+  }, [selectedCurrency]);
   const [botNames] = useState<string[]>([
     "Trading Bot Alpha",
     "DCA Bot Beta",
@@ -3068,14 +3095,36 @@ export default function Dashboard() {
                         align="start"
                         className="w-[280px] sm:w-[500px] h-auto mobile-dropdown-content"
                       >
-                        {botNames.map((botName) => (
-                          <DropdownMenuItem
-                            key={botName}
-                            onClick={() => setSelectedBot(botName)}
-                          >
-                            {botName}
-                          </DropdownMenuItem>
-                        ))}
+                        {freqTradeBots.length > 0 ? (
+                          freqTradeBots.map((bot) => (
+                            <DropdownMenuItem
+                              key={bot.instanceId}
+                              onClick={() => {
+                                setSelectedBot(bot.instanceId);
+                                setSelectedBotForStrategy(bot.instanceId);
+                              }}
+                            >
+                              <div className="flex flex-col items-start">
+                                <span className="font-medium">{bot.instanceId}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Status: {typeof bot.status === 'string' ? bot.status : 'Unknown'}
+                                </span>
+                              </div>
+                            </DropdownMenuItem>
+                          ))
+                        ) : (
+                          botNames.map((botName) => (
+                            <DropdownMenuItem
+                              key={botName}
+                              onClick={() => {
+                                setSelectedBot(botName);
+                                setSelectedBotForStrategy(null);
+                              }}
+                            >
+                              {botName}
+                            </DropdownMenuItem>
+                          ))
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -3085,9 +3134,7 @@ export default function Dashboard() {
                         "bot-status-indicator w-3 h-3 sm:w-4 sm:h-4 rounded-full shrink-0 flex-shrink-0",
                         (
                           isFreqTradeAvailable && freqTradeBots.length > 0
-                            ? freqTradeBots.some(
-                                (bot) => bot.status === "running"
-                              )
+                            ? freqTradeBots.some((bot) => isBotRunning(bot))
                             : botActive
                         )
                           ? "bg-green-500"
@@ -3100,9 +3147,7 @@ export default function Dashboard() {
                         className={
                           (
                             isFreqTradeAvailable && freqTradeBots.length > 0
-                              ? freqTradeBots.some(
-                                  (bot) => bot.status === "running"
-                                )
+                              ? freqTradeBots.some((bot) => isBotRunning(bot))
                               : botActive
                           )
                             ? "text-green-600"
@@ -3111,9 +3156,7 @@ export default function Dashboard() {
                       >
                         {isFreqTradeAvailable && freqTradeBots.length > 0
                           ? `${
-                              freqTradeBots.filter(
-                                (bot) => bot.status === "running"
-                              ).length
+                              freqTradeBots.filter((bot) => isBotRunning(bot)).length
                             } Active`
                           : botActive
                           ? "Active"
@@ -3127,52 +3170,22 @@ export default function Dashboard() {
                     )}
                   </div>
                   <div className="bot-section-spacing mobile-dropdown-fix">
-                    <Label
-                      htmlFor="strategy-select"
-                      className="text-sm font-medium"
-                    >
-                      Strategy
-                    </Label>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          id="strategy-select"
-                          variant="outline"
-                          className="mt-1 w-full flex justify-between items-center h-9 sm:h-auto mobile-dropdown-trigger"
-                        >
-                          {botStrategy || "Select strategy"}
-                          <ChevronDown className="h-4 w-4 opacity-50" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="start"
-                        className="w-[280px] sm:w-[500px] h-auto mobile-dropdown-content"
-                      >
-                        <DropdownMenuItem
-                          onClick={() => setBotStrategy("Aggressive Growth")}
-                        >
-                          Aggressive Growth
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setBotStrategy("Conservative")}
-                        >
-                          Conservative
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setBotStrategy("Balanced")}
-                        >
-                          Balanced
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setBotStrategy("DCA")}>
-                          Dollar-Cost Averaging
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setBotStrategy("Trend Following")}
-                        >
-                          Trend Following
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <StrategySelector 
+                      botInstanceId={selectedBotForStrategy || (freqTradeBots.length > 0 ? freqTradeBots[0]?.instanceId || null : null)}
+                      onStrategyChange={(newStrategy, success) => {
+                        if (success) {
+                          setBotStrategy(newStrategy);
+                          const botId = selectedBotForStrategy || freqTradeBots[0]?.instanceId;
+                          console.log(`✅ Strategy changed to: ${newStrategy} for bot: ${botId}`);
+                          // Optional: Trigger bot data refresh
+                          setForceUpdate(prev => prev + 1);
+                        } else {
+                          const botId = selectedBotForStrategy || freqTradeBots[0]?.instanceId;
+                          console.error(`❌ Failed to change strategy to: ${newStrategy} for bot: ${botId}`);
+                        }
+                      }}
+                      className="w-full"
+                    />
                   </div>
                   <div className="bot-section-spacing">
                     <p className="text-sm font-medium bot-performance-spacing sm:mb-2">
@@ -4006,9 +4019,9 @@ export default function Dashboard() {
                               <div
                                 className={cn(
                                   "w-2 h-2 rounded-full",
-                                  bot.status === "running"
+                                  getBotStatus(bot) === "running"
                                     ? "bg-green-500"
-                                    : bot.status === "stopped"
+                                    : getBotStatus(bot) === "stopped"
                                     ? "bg-red-500"
                                     : "bg-yellow-500"
                                 )}
@@ -4018,16 +4031,18 @@ export default function Dashboard() {
                                   {`Bot ${typeof bot.instanceId === 'string' ? bot.instanceId : 'Unknown'}`}
                                 </p>
                                 <p className="text-xs text-muted-foreground capitalize">
-                                  {Array.isArray(bot.status)
-                                    ? `${bot.status.length} active trades`
-                                    : typeof bot.status === 'string' 
-                                    ? bot.status 
-                                    : "Inactive"}
+                                  {(() => {
+                                    if (Array.isArray(bot.status)) {
+                                      return `${bot.status.length} active trades`;
+                                    } else {
+                                      return getBotStatus(bot);
+                                    }
+                                  })()}
                                 </p>
                               </div>
                             </div>
                             <div className="flex gap-1">
-                              {bot.status === "stopped" ? (
+                              {getBotStatus(bot) === "stopped" ? (
                                 <Button
                                   size="sm"
                                   variant="outline"

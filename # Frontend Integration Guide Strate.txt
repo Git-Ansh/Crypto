@@ -1,0 +1,534 @@
+# Frontend Integration Guide: Strategy Management API
+
+## Base Configuration
+
+Since your frontend is already set up, you'll need to integrate these new strategy management endpoints:
+
+**Base URL**: `https://freqtrade.crypto-pilot.dev`
+
+## API Endpoints Overview
+
+### 1. List Available Strategies
+```
+GET https://freqtrade.crypto-pilot.dev/api/strategies
+```
+
+### 2. Get Bot's Current Strategy  
+```
+GET https://freqtrade.crypto-pilot.dev/api/bots/{instanceId}/strategy
+```
+
+### 3. Update Bot Strategy
+```
+PUT https://freqtrade.crypto-pilot.dev/api/bots/{instanceId}/strategy
+```
+
+## Integration Code Examples
+
+### 1. API Service Functions
+
+Add these functions to your API service layer:
+
+```javascript
+// api/strategyService.js or similar
+
+const BASE_URL = 'https://freqtrade.crypto-pilot.dev';
+
+export const strategyAPI = {
+  // Get all available strategies
+  async getAvailableStrategies(token) {
+    try {
+      const response = await fetch(`${BASE_URL}/api/strategies`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch strategies: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data.strategies;
+    } catch (error) {
+      console.error('Error fetching strategies:', error);
+      throw error;
+    }
+  },
+
+  // Get current strategy for a specific bot
+  async getBotStrategy(token, instanceId) {
+    try {
+      const response = await fetch(`${BASE_URL}/api/bots/${instanceId}/strategy`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch bot strategy: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data.strategy;
+    } catch (error) {
+      console.error('Error fetching bot strategy:', error);
+      throw error;
+    }
+  },
+
+  // Update bot strategy
+  async updateBotStrategy(token, instanceId, newStrategy) {
+    try {
+      const response = await fetch(`${BASE_URL}/api/bots/${instanceId}/strategy`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ strategy: newStrategy })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to update strategy: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error updating bot strategy:', error);
+      throw error;
+    }
+  }
+};
+```
+
+### 2. React Hook for Strategy Management
+
+Create a custom hook for easy integration:
+
+```javascript
+// hooks/useStrategyManagement.js
+
+import { useState, useEffect } from 'react';
+import { strategyAPI } from '../api/strategyService';
+
+export const useStrategyManagement = (token) => {
+  const [strategies, setStrategies] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Load available strategies on mount
+  useEffect(() => {
+    if (token) {
+      loadStrategies();
+    }
+  }, [token]);
+
+  const loadStrategies = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const strategiesData = await strategyAPI.getAvailableStrategies(token);
+      setStrategies(strategiesData);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getBotStrategy = async (instanceId) => {
+    try {
+      return await strategyAPI.getBotStrategy(token, instanceId);
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  };
+
+  const updateBotStrategy = async (instanceId, newStrategy) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await strategyAPI.updateBotStrategy(token, instanceId, newStrategy);
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return {
+    strategies,
+    loading,
+    error,
+    loadStrategies,
+    getBotStrategy,
+    updateBotStrategy
+  };
+};
+```
+
+### 3. Strategy Selector Component
+
+```javascript
+// components/StrategySelector.jsx
+
+import React, { useState, useEffect } from 'react';
+import { useStrategyManagement } from '../hooks/useStrategyManagement';
+
+const StrategySelector = ({ bot, token, onStrategyChange }) => {
+  const { strategies, loading, error, getBotStrategy, updateBotStrategy } = useStrategyManagement(token);
+  const [currentStrategy, setCurrentStrategy] = useState('');
+  const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    // Load current strategy when component mounts or bot changes
+    if (bot?.instanceId) {
+      loadCurrentStrategy();
+    }
+  }, [bot?.instanceId]);
+
+  const loadCurrentStrategy = async () => {
+    try {
+      const strategyData = await getBotStrategy(bot.instanceId);
+      setCurrentStrategy(strategyData.current);
+    } catch (err) {
+      console.error('Failed to load current strategy:', err);
+    }
+  };
+
+  const handleStrategyChange = async (newStrategy) => {
+    if (newStrategy === currentStrategy) return;
+
+    setUpdating(true);
+    try {
+      const result = await updateBotStrategy(bot.instanceId, newStrategy);
+      
+      if (result.success) {
+        setCurrentStrategy(newStrategy);
+        onStrategyChange?.(newStrategy, result);
+        
+        // Show success message
+        alert(`Strategy updated to ${newStrategy}${result.strategy.restarted ? ' and bot restarted' : ''}`);
+      } else {
+        alert('Failed to update strategy: ' + result.message);
+      }
+    } catch (err) {
+      alert('Error updating strategy: ' + err.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  if (loading) return <div>Loading strategies...</div>;
+  if (error) return <div>Error: {error}</div>;
+
+  return (
+    <div className="strategy-selector">
+      <label htmlFor={`strategy-${bot.instanceId}`}>
+        Trading Strategy:
+      </label>
+      <select
+        id={`strategy-${bot.instanceId}`}
+        value={currentStrategy}
+        onChange={(e) => handleStrategyChange(e.target.value)}
+        disabled={updating}
+        className="strategy-dropdown"
+      >
+        <option value="">Select Strategy...</option>
+        {strategies.map((strategy) => (
+          <option key={strategy.name} value={strategy.name}>
+            {strategy.name}
+          </option>
+        ))}
+      </select>
+      
+      {updating && <span className="updating-indicator">Updating...</span>}
+      
+      {/* Strategy Description */}
+      {currentStrategy && (
+        <div className="strategy-info">
+          {strategies.find(s => s.name === currentStrategy)?.description && (
+            <p className="strategy-description">
+              {strategies.find(s => s.name === currentStrategy).description.split('\n')[0]}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default StrategySelector;
+```
+
+### 4. Enhanced Bot Card/Dashboard Integration
+
+```javascript
+// components/BotCard.jsx (or wherever you display bot information)
+
+import React from 'react';
+import StrategySelector from './StrategySelector';
+
+const BotCard = ({ bot, token }) => {
+  const handleStrategyChange = (newStrategy, result) => {
+    // Optional: Update bot data in parent component
+    console.log(`Bot ${bot.instanceId} strategy changed to ${newStrategy}`);
+    
+    // Optional: Refresh bot data or trigger other updates
+    // onBotUpdate?.(bot.instanceId);
+  };
+
+  return (
+    <div className="bot-card">
+      <div className="bot-header">
+        <h3>{bot.instanceId}</h3>
+        <span className={`status ${bot.containerStatus}`}>
+          {bot.containerStatus}
+        </span>
+      </div>
+      
+      <div className="bot-details">
+        <p>Exchange: {bot.exchange}</p>
+        <p>Port: {bot.port}</p>
+        <p>Stake: {bot.stake_amount} {bot.stake_currency}</p>
+      </div>
+      
+      {/* Strategy Selector Integration */}
+      <StrategySelector 
+        bot={bot}
+        token={token}
+        onStrategyChange={handleStrategyChange}
+      />
+      
+      {/* Your existing bot controls */}
+      <div className="bot-controls">
+        {/* Start/Stop/Delete buttons etc. */}
+      </div>
+    </div>
+  );
+};
+
+export default BotCard;
+```
+
+### 5. Strategy Management Page (Optional)
+
+If you want a dedicated strategy management page:
+
+```javascript
+// pages/StrategyManagement.jsx
+
+import React, { useState, useEffect } from 'react';
+import { useStrategyManagement } from '../hooks/useStrategyManagement';
+
+const StrategyManagement = ({ token }) => {
+  const { strategies, loading, error } = useStrategyManagement(token);
+  const [selectedStrategy, setSelectedStrategy] = useState(null);
+
+  const handleStrategySelect = (strategy) => {
+    setSelectedStrategy(strategy);
+  };
+
+  return (
+    <div className="strategy-management">
+      <h1>Available Trading Strategies</h1>
+      
+      {loading && <div>Loading strategies...</div>}
+      {error && <div className="error">Error: {error}</div>}
+      
+      <div className="strategies-grid">
+        {strategies.map((strategy) => (
+          <div 
+            key={strategy.name} 
+            className={`strategy-card ${selectedStrategy?.name === strategy.name ? 'selected' : ''}`}
+            onClick={() => handleStrategySelect(strategy)}
+          >
+            <h3>{strategy.name}</h3>
+            <p className="strategy-class">Class: {strategy.className}</p>
+            <p className="strategy-description">{strategy.description}</p>
+            <span className="strategy-file">File: {strategy.fileName}</span>
+          </div>
+        ))}
+      </div>
+      
+      {selectedStrategy && (
+        <div className="strategy-details">
+          <h2>Strategy Details: {selectedStrategy.name}</h2>
+          <pre className="strategy-description-full">
+            {selectedStrategy.description}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default StrategyManagement;
+```
+
+## CSS Styling Examples
+
+```css
+/* Strategy Selector Styles */
+.strategy-selector {
+  margin: 1rem 0;
+}
+
+.strategy-selector label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
+.strategy-dropdown {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+}
+
+.strategy-dropdown:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.updating-indicator {
+  margin-left: 0.5rem;
+  color: #007bff;
+  font-style: italic;
+}
+
+.strategy-info {
+  margin-top: 0.5rem;
+}
+
+.strategy-description {
+  font-size: 0.9rem;
+  color: #666;
+  margin: 0;
+}
+
+/* Strategy Management Page Styles */
+.strategies-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.strategy-card {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.strategy-card:hover {
+  border-color: #007bff;
+  box-shadow: 0 2px 8px rgba(0,123,255,0.1);
+}
+
+.strategy-card.selected {
+  border-color: #007bff;
+  background-color: #f8f9fa;
+}
+
+.strategy-details {
+  margin-top: 2rem;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+
+.strategy-description-full {
+  white-space: pre-wrap;
+  background: white;
+  padding: 1rem;
+  border-radius: 4px;
+  border: 1px solid #eee;
+}
+```
+
+## Integration Checklist
+
+### ✅ **Step 1: Add API Functions**
+- [ ] Add the `strategyAPI` service functions to your API layer
+- [ ] Update your base URL configuration to use `https://freqtrade.crypto-pilot.dev`
+
+### ✅ **Step 2: Create Hook**
+- [ ] Add the `useStrategyManagement` hook to your hooks directory
+- [ ] Test the hook with your existing authentication token system
+
+### ✅ **Step 3: Integrate Components**
+- [ ] Add `StrategySelector` component to your bot cards/dashboard
+- [ ] Update bot display components to include strategy selection
+- [ ] Test strategy changes with existing bots
+
+### ✅ **Step 4: Add Styling**
+- [ ] Add the provided CSS or adapt to your existing design system
+- [ ] Ensure responsive design for mobile/tablet
+
+### ✅ **Step 5: Error Handling**
+- [ ] Test error scenarios (invalid tokens, network issues)
+- [ ] Add appropriate user feedback and loading states
+- [ ] Implement retry mechanisms if needed
+
+### ✅ **Step 6: Optional Enhancements**
+- [ ] Add strategy management page (if desired)
+- [ ] Implement strategy change confirmation dialogs
+- [ ] Add strategy change history/logging
+
+## Available Strategies
+
+Your users can select from these 6 strategies:
+
+1. **AggressiveSophisticated1m** - Advanced multi-indicator 1-minute strategy
+2. **EmaRsiStrategy** - EMA crossover with RSI filter (recommended default)
+3. **ExtremeStrategy** - High-risk, high-reward aggressive strategy
+4. **HighFrequencyScalp1m** - 1-minute scalping strategy
+5. **HighFrequencyStrategy** - High-frequency trading strategy
+6. **balancedStrat** - Balanced risk/reward approach
+
+## Testing
+
+You can test the API endpoints directly:
+
+```bash
+# Replace YOUR_TOKEN with actual JWT token
+TOKEN="your_jwt_token_here"
+
+# Test get strategies
+curl -H "Authorization: Bearer $TOKEN" \
+     https://freqtrade.crypto-pilot.dev/api/strategies
+
+# Test get bot strategy  
+curl -H "Authorization: Bearer $TOKEN" \
+     https://freqtrade.crypto-pilot.dev/api/bots/your-bot-id/strategy
+
+# Test update strategy
+curl -X PUT \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"strategy": "HighFrequencyStrategy"}' \
+     https://freqtrade.crypto-pilot.dev/api/bots/your-bot-id/strategy
+```
+
+## Notes
+
+- **Authentication**: Use your existing JWT token system - no changes needed
+- **Rate Limiting**: Strategy endpoints are exempt from rate limiting for smooth UX
+- **Real-time Updates**: Bot restarts happen automatically when strategies are changed
+- **Error Handling**: All endpoints return proper HTTP status codes and error messages
+- **Backward Compatibility**: Existing bot functionality remains unchanged
